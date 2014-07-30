@@ -1,0 +1,17 @@
+Chessboard dX = dY = 29mm
+
+Camera intrinsic: 3x3
+    714.101 0       325.291
+    0       717.55  211.309
+    0       0       1
+Camera distortion: 1x8
+    0.0663815 1.10637 -0.00389666 0.000449594 14.1847 -0.0100892 2.03799 11.8229
+
+=> Transformed to real-world coordinates:
+
+    Camera intrinsic: 3x3
+        24.62412px/mm 0             325.291px
+        0             24.7431px/mm  211.309px
+        0             0             1
+
+Reprojection error: 0.316463

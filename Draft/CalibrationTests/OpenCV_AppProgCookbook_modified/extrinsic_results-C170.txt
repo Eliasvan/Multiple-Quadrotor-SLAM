@@ -1,0 +1,9 @@
+Camera2 relative to Camera1: rotation: 3x1
+    0.774983 -0.618915 0.310366
+Camera2 relative to Camera1: translation: 3x1
+    0.749552 -0.950977 2.2986
+
+=> Transformed to real-world coordinates:
+
+    Camera2 relative to Camera1: translation: 3x1
+        21.7mm -27.6mm 66.7mm
