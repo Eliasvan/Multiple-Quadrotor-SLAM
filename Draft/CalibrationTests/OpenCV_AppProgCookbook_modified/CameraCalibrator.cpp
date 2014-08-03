@@ -53,12 +53,12 @@ int CameraCalibrator::addChessboardPoints(
 
         // Get subpixel accuracy on the corners
         cv::cornerSubPix(image, imageCorners, 
-                  cv::Size(5,5), 
+                  cv::Size(11,11), 
                   cv::Size(-1,-1), 
 			cv::TermCriteria(cv::TermCriteria::MAX_ITER +
                           cv::TermCriteria::EPS, 
              30,		// max number of iterations 
-             0.1));     // min accuracy
+             0.001));     // min accuracy
 
           // If we have a good board, add it to our data
 		  if (imageCorners.size() == boardSize.area()) {
