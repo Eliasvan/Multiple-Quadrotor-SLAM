@@ -1,0 +1,6 @@
+Current pose:
+    rvec: [ 0.713  0.697  -0.076 ] * -178.5deg
+    tvec: [ 3.116  5.841  15.807 ]
+Relative to previous pose:
+    rvec: [ 0.713  0.697  -0.076 ] * -178.5deg
+    tvec: [ 3.116  5.841  15.807 ]
