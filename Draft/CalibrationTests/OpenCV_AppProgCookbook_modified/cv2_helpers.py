@@ -3,6 +3,17 @@ import cv2
 
 
 
+def imshow(title, img):
+    """
+    Use this combined with calling 'cv2.startWindowThread()' at the start of your program
+    to allow to afterwards close windows in the middle of runtime
+    (by calling 'cv2.destroyAllWindows()').
+    
+    Don't use this methodology if you want realtime key-captures.
+    """
+    cv2.namedWindow(title)
+    cv2.imshow(title, img)
+
 rgb = cv2.cv.CV_RGB
 
 # Some wrapper functions to make some calls more concise

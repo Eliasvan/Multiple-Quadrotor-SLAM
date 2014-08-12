@@ -3,6 +3,8 @@
 """
     Code originates from:
         http://docs.opencv.org/trunk/doc/py_tutorials/py_calib3d/py_calibration/py_calibration.html
+    
+    View demo video at http://www.youtube.com/watch?v=SX2qodUfDaA
 """
 from math import degrees
 import numpy as np
@@ -47,15 +49,12 @@ def calibrate_camera(images, objp, boardSize):
             # Draw and display the corners
             cv2.drawChessboardCorners(
                     img, boardSize, corners, ret )
-            cv2.imshow('img', img)
+            cv2.imshow("img", img)
             cv2.waitKey(100)
 
     # Calibration
     reproj_error, cameraMatrix, distCoeffs, rvecs, tvecs = cv2.calibrateCamera(
             objectPoints, imagePoints, imageSize )
-    print "cameraMatrix:\n", cameraMatrix
-    print "distCoeffs:\n", distCoeffs
-    print "reproj_error:", reproj_error
     
     return reproj_error, cameraMatrix, distCoeffs, rvecs, tvecs, \
             objectPoints, imagePoints, imageSize
@@ -79,15 +78,11 @@ def undistort_image(img, cameraMatrix, distCoeffs, imageSize):
     # crop the image
     x,y, w,h = roi
     img_undistorted = img_undistorted[y:y+h, x:x+w]
-
-    cv2.imshow("Original Image", img);
-    cv2.imshow("Undistorted Image", img_undistorted)
     
     return img_undistorted, roi
 
 
 def reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, imagePoints, boardSize):
-    # Re-projection Error
     mean_error = np.zeros((1, 2))
     square_error = np.zeros((1, 2))
     n_images = len(imagePoints)
@@ -101,21 +96,28 @@ def reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, ima
 
     mean_error = cv2.norm(mean_error / n_images)
     square_error = np.sqrt(square_error.sum() / n_images)
-
-    print "mean absolute error:", mean_error
-    print "square error:", square_error
     
     return mean_error, square_error
 
 
 def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, distCoeffs, objp, boardSize):
     """
-    View chessboard with axis-system drawn on-top,
-    with additional information about the pose of
-    the CAMERA w.r.t. the WORLD (= chessboard).
+    This interactive demo will track a chessboard in realtime using a webcam,
+    and the WORLD axis-system will be drawn on it: [X Y Z] = [red green blue]
+    Further on you will see some data in the bottom-right corner,
+    this indicates both the pose of the current image w.r.t. the WORLD axis-system,
+    as well as the pose of the current image w.r.t. the previous keyframe pose.
     
-    A 
+    To create a new keyframe while running, press SPACE.
+    Each time a new keyframe is generated,
+    the corresponding image and data (in txt-format) is written to the 'filename_base_extrinsics' folder.
+    
+    All poses are defined in the WORLD axis-system,
+    the rotation notation follows axis-angle representation: '<unit vector> * <magnitude (degrees)>'.
+    
+    To quit, press ESC.
     """
+    cv2.namedWindow("Image (with axis-system)")
     axis_system_objp = np.array([ [0., 0., 0.],   # Origin (black)
                                   [4., 0., 0.],   # X-axis (red)
                                   [0., 4., 0.],   # Y-axis (green)
@@ -131,7 +133,7 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
     tvec_prev = np.zeros((3, 1))
     tvec = None
 
-    # Loop until 'Q' or ESC pressed
+    # Loop until 'q' or ESC pressed
     last_key_pressed = 0
     while not last_key_pressed in (ord('q'), 27):
         ret_, img = cap.read()
@@ -173,11 +175,11 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
             # Draw pose information
             texts = []
             texts.append("Current pose:")
-            texts.append("    rvec: %s * %.1fdeg" % (format3DVector(rvec_axis), degrees(rvec_angle)))
-            texts.append("    tvec: %s" % format3DVector(tvec))
+            texts.append("    Rvec: %s * %.1fdeg" % (format3DVector(rvec_axis), degrees(rvec_angle)))
+            texts.append("    Tvec: %s" % format3DVector(tvec))
             texts.append("Relative to previous pose:")
-            texts.append("    rvec: %s * %.1fdeg" % (format3DVector(rvec_rel_axis), degrees(rvec_rel_angle)))
-            texts.append("    tvec: %s" % format3DVector(tvec_rel))
+            texts.append("    Rvec: %s * %.1fdeg" % (format3DVector(rvec_rel_axis), degrees(rvec_rel_angle)))
+            texts.append("    Tvec: %s" % format3DVector(tvec_rel))
             
             mlt.text(texts[0], fontFace, fontScale*1.5, rgb(150,0,0), thickness=2)
             mlt.text(texts[1], fontFace, fontScale, rgb(255,0,0))
@@ -194,7 +196,7 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
         # Save keyframe image when SPACE is pressed
         last_key_pressed = cv2.waitKey(1) & 0xFF
         if last_key_pressed == ord(' ') and ret:
-            filename = filename_base_extrinsics + str(imageNr) # TODO: replace 'chessboards_extrinsic/chessboard' by parameter
+            filename = filename_base_extrinsics + str(imageNr)
             cv2.imwrite(filename + ".jpg", img)    # write image to jpg-file
             textTotal = '\n'.join(texts)
             open(filename + ".txt", 'w').write(textTotal)    # write data to txt-file
@@ -211,60 +213,83 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
 def main():
     boardSize = (8, 6)
     filename_base_chessboards = "chessboards/chessboard*.jpg"
-    filename_distorted = "chessboards/chessboard07.jpg"
+    filename_distorted = "chessboards/chessboard07.jpg"    # a randomly chosen image
     filename_base_extrinsics = "chessboards_extrinsic/chessboard"
     device_id = 1    # webcam
 
-    print "Choose between:"
-    print "    1: prepare_object_points"
-    print "    2: calibrate_camera"
+    print "Choose between: (in order)"
+    print "    1: prepare_object_points (required)"
+    print "    2: calibrate_camera (required)"
     print "    3: undistort_image"
     print "    4: reprojection_error"
-    print "    5: realtime_pose_estimation"
+    print "    5: realtime_pose_estimation (recommended)"
+    print "    q: quit"
+    print
+    print "Info: Sometimes you will be prompted: 'someVariable [defaultValue]: ',"
+    print "      in that case you can type a new value,"
+    print "      or simply press ENTER to preserve the default value."
     inp = ""
     while inp.lower() != "q":
-        inp = raw_input("\n: ")
+        inp = raw_input("\n: ").strip()
         
         if inp == "1":
             boardSize_inp = raw_input("boardSize [%s]: " % repr(boardSize))
-            print    # add new-line
             if boardSize_inp:
                 exec "boardSize = " + boardSize_inp
+            print    # add new-line
             
             objp = prepare_object_points(boardSize)
         
         elif inp == "2":
             filename_base_chessboards_inp = raw_input("filename_base_chessboards [%s]: " % repr(filename_base_chessboards))
-            print    # add new-line
             if filename_base_chessboards_inp:
                 filename_base_chessboards = filename_base_chessboards_inp
             images = sorted(glob.glob(filename_base_chessboards))
+            print    # add new-line
             
             reproj_error, cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, imagePoints, imageSize = \
                     calibrate_camera(images, objp, boardSize)
+            print "cameraMatrix:\n", cameraMatrix
+            print "distCoeffs:\n", distCoeffs
+            print "reproj_error:", reproj_error
+            
             cv2.destroyAllWindows()
         
         elif inp == "3":
             filename_distorted_inp = raw_input("filename_distorted [%s]: " % repr(filename_distorted))
-            print    # add new-line
             if filename_distorted_inp:
                 filename_distorted = filename_distorted_inp
             img = cv2.imread(filename_distorted)
+            print    # add new-line
             
-            undistort_image(img, cameraMatrix, distCoeffs, imageSize)
+            img_undistorted, roi = \
+                    undistort_image(img, cameraMatrix, distCoeffs, imageSize)
+            cv2.imshow("Original Image", img)
+            cv2.imshow("Undistorted Image", img_undistorted)
+            print "Press any key to continue."
             cv2.waitKey()
+            
             cv2.destroyAllWindows()
         
         elif inp == "4":
-            reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, imagePoints, boardSize)
+            mean_error, square_error = \
+                    reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, imagePoints, boardSize)
+            print "mean absolute error:", mean_error
+            print "square error:", square_error
         
         elif inp == "5":
+            print realtime_pose_estimation.__doc__
+            
+            device_id_inp = raw_input("device_id [%s]: " % repr(device_id))
+            if device_id_inp:
+                device_id = int(device_id_inp)
             filename_base_extrinsics_inp = raw_input("filename_base_extrinsics [%s]: " % repr(filename_base_extrinsics))
-            print    # add new-line
             if filename_base_extrinsics_inp:
                 filename_base_extrinsics = filename_base_extrinsics_inp
+            print    # add new-line
             
             realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, distCoeffs, objp, boardSize)
+            
             cv2.destroyAllWindows()
 
 

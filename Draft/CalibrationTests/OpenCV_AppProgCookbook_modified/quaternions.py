@@ -41,7 +41,7 @@ def delta_quat(q2, q1):
 
 def quat_from_rvec(rvec):
     """
-    Convert angle-axis represented 'rvec' to a quaternion.
+    Convert axis-angle represented 'rvec' to a quaternion.
     """
     qwt = np.zeros((4, 1))
 
@@ -56,7 +56,7 @@ def quat_from_rvec(rvec):
 
 def rvec_from_quat(qwt):
     """
-    Convert quaternion to angle-axis representation.
+    Convert quaternion to axis-angle representation.
     
     Source: http://www.euclideanspace.com/maths/geometry/rotations/conversions/quaternionToAngle/index.htm
     """
@@ -77,7 +77,7 @@ def rvec_from_quat(qwt):
 
 def axis_and_angle_from_rvec(rvec):
     """
-    Return the axis vector and angle of the angle-axis represented 'rvec'.
+    Return the axis vector and angle of the axis-angle represented 'rvec'.
     """
     angle = LA.norm(rvec)
     
