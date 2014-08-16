@@ -55,9 +55,31 @@ def calibrate_camera(images, objp, boardSize):
     # Calibration
     reproj_error, cameraMatrix, distCoeffs, rvecs, tvecs = cv2.calibrateCamera(
             objectPoints, imagePoints, imageSize )
+    distCoeffs = distCoeffs.reshape((-1))    # convert to vector
     
     return reproj_error, cameraMatrix, distCoeffs, rvecs, tvecs, \
             objectPoints, imagePoints, imageSize
+
+
+def save_camera_intrinsics(filename, cameraMatrix, distCoeffs, imageSize):
+    out = """\
+    # cameraMatrix, distCoeffs, imageSize =
+    
+    %s, \\
+    \\
+    %s, \\
+    \\
+    %s
+    """
+    from textwrap import dedent
+    out = dedent(out) % (repr(cameraMatrix), repr(distCoeffs), repr(imageSize))
+    open(filename, 'w').write(out)
+
+def load_camera_intrinsics(filename):
+    from numpy import array
+    cameraMatrix, distCoeffs, imageSize = \
+            eval(open(filename, 'r').read())
+    return cameraMatrix, distCoeffs, imageSize
 
 
 def undistort_image(img, cameraMatrix, distCoeffs, imageSize):
@@ -213,6 +235,7 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
 def main():
     boardSize = (8, 6)
     filename_base_chessboards = "chessboards/chessboard*.jpg"
+    filename_intrinsics = "camera_intrinsics.txt"
     filename_distorted = "chessboards/chessboard07.jpg"    # a randomly chosen image
     filename_base_extrinsics = "chessboards_extrinsic/chessboard"
     device_id = 1    # webcam
@@ -220,9 +243,10 @@ def main():
     print "Choose between: (in order)"
     print "    1: prepare_object_points (required)"
     print "    2: calibrate_camera (required)"
-    print "    3: undistort_image"
-    print "    4: reprojection_error"
-    print "    5: realtime_pose_estimation (recommended)"
+    print "    3: save_camera_intrinsics"
+    print "    4: undistort_image"
+    print "    5: reprojection_error"
+    print "    6: realtime_pose_estimation (recommended)"
     print "    q: quit"
     print
     print "Info: Sometimes you will be prompted: 'someVariable [defaultValue]: ',"
@@ -256,6 +280,14 @@ def main():
             cv2.destroyAllWindows()
         
         elif inp == "3":
+            filename_intrinsics_inp = raw_input("filename_intrinsics [%s]: " % repr(filename_intrinsics))
+            if filename_intrinsics_inp:
+                filename_intrinsics = filename_intrinsics_inp
+            print    # add new-line
+            
+            save_camera_intrinsics(filename_intrinsics, cameraMatrix, distCoeffs, imageSize)
+        
+        elif inp == "4":
             filename_distorted_inp = raw_input("filename_distorted [%s]: " % repr(filename_distorted))
             if filename_distorted_inp:
                 filename_distorted = filename_distorted_inp
@@ -271,13 +303,13 @@ def main():
             
             cv2.destroyAllWindows()
         
-        elif inp == "4":
+        elif inp == "5":
             mean_error, square_error = \
                     reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, imagePoints, boardSize)
             print "mean absolute error:", mean_error
             print "square error:", square_error
         
-        elif inp == "5":
+        elif inp == "6":
             print realtime_pose_estimation.__doc__
             
             device_id_inp = raw_input("device_id [%s]: " % repr(device_id))
