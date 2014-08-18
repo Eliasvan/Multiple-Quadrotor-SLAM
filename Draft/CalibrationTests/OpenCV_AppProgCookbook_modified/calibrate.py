@@ -6,10 +6,10 @@
     
     View demo video at http://www.youtube.com/watch?v=SX2qodUfDaA
 """
+import os
 from math import degrees
 import numpy as np
 import quaternions as qwts
-import glob
 import cv2
 import cv2_helpers as cvh
 from cv2_helpers import rgb, format3DVector
@@ -145,7 +145,7 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
                                   [0., 4., 0.],   # Y-axis (green)
                                   [0., 0., 4.] ]) # Z-axis (blue)
     fontFace = cv2.FONT_HERSHEY_DUPLEX
-    fontScale = .5
+    fontScale = 0.5
     mlt = cvh.MultilineText()
     cap = cv2.VideoCapture(device_id)
 
@@ -234,10 +234,10 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
 
 def main():
     boardSize = (8, 6)
-    filename_base_chessboards = "chessboards/chessboard*.jpg"
+    filename_base_chessboards = os.path.join("chessboards", "chessboard*.jpg")
     filename_intrinsics = "camera_intrinsics.txt"
-    filename_distorted = "chessboards/chessboard07.jpg"    # a randomly chosen image
-    filename_base_extrinsics = "chessboards_extrinsic/chessboard"
+    filename_distorted = os.path.join("chessboards", "chessboard07.jpg")    # a randomly chosen image
+    filename_base_extrinsics = os.path.join("chessboards_extrinsic", "chessboard")
     device_id = 1    # webcam
 
     print "Choose between: (in order)"
@@ -268,7 +268,8 @@ def main():
             filename_base_chessboards_inp = raw_input("filename_base_chessboards [%s]: " % repr(filename_base_chessboards))
             if filename_base_chessboards_inp:
                 filename_base_chessboards = filename_base_chessboards_inp
-            images = sorted(glob.glob(filename_base_chessboards))
+            from glob import glob
+            images = sorted(glob(filename_base_chessboards))
             print    # add new-line
             
             reproj_error, cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, imagePoints, imageSize = \
@@ -324,6 +325,5 @@ def main():
             
             cv2.destroyAllWindows()
 
-
-
-main()
+if __name__ == "__main__":
+    main()
