@@ -75,7 +75,7 @@ def main():
     # Calculate optical flow (= 'OF') field from left to right
     left_gray = cv2.cvtColor(left_img, cv2.COLOR_BGR2GRAY)
     right_gray = cv2.cvtColor(right_img, cv2.COLOR_BGR2GRAY)
-    right_OF_points, status, err = cv2.calcOpticalFlowPyrLK(
+    right_OF_points, status, err_OF = cv2.calcOpticalFlowPyrLK(
             left_gray, right_gray,
             left_points )    # points to start from
     
@@ -83,7 +83,7 @@ def main():
     right_OF_points, right_OF_to_left_idxs = \
             zip(*[ (p, i) for i, p in enumerate(right_OF_points)
                             if status[i] and    # only include correct OF-points
-                               err[i] < max_OF_error ])    # error should be low enough
+                               err_OF[i] < max_OF_error ])    # error should be low enough
     right_OF_points = np.array(right_OF_points)
     
     # Visualize right_OF_points
@@ -130,7 +130,8 @@ def main():
         #if match.trainIdx in best_dist_matches_by_trainIdx:
             #print "duplicate!"
         if (not match.trainIdx in best_dist_matches_by_trainIdx or    # no duplicate found
-                match.distance < best_dist_matches_by_trainIdx[match.trainIdx].distance):    # replace duplicate if inferior
+                err_OF[match.queryIdx] <    # replace duplicate if inferior, based on err_OF
+                    err_OF[match.queryIdx][best_dist_matches_by_trainIdx[match.trainIdx]]):
             best_dist_matches_by_trainIdx[match.trainIdx] = match
     
     # Partition matches to make a distinction between previously triangulated points and non-triangl.
