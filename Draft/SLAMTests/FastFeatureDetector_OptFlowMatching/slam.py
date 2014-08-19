@@ -171,6 +171,13 @@ def main():
             chessboard_idxs = set(matches_by_trainIdx_chessboard)
         
         
+        # Calculate average filtered OF vector
+        trainIdxs = list(matches_by_trainIdx)
+        queryIdxs = [matches_by_trainIdx[trainIdx].queryIdx for trainIdx in trainIdxs]
+        mean_OF_vector = (right_FAST_points[trainIdxs] - left_points[queryIdxs]).mean(axis=0)
+        mean_OF_vector_length = np.linalg.norm(mean_OF_vector)
+        print "mean_OF_vector (from left to right):", mean_OF_vector, ";    mean_OF_vector_length:", mean_OF_vector_length
+        
         # Partition matches to make a distinction between previously triangulated points and non-triangl.
         matches_left_triangl_to_right_FAST = []
         matches_left_non_triangl_to_right_FAST = []

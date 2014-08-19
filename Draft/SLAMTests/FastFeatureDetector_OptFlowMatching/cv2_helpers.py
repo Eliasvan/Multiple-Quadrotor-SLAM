@@ -125,7 +125,12 @@ if has_native_radiusMatch:
     
 else:
     class BFMatcher:
-        """Wrapper class + Python implementation of 'radiusMatch' to work around BUG #1."""
+        """
+        Wrapper class + Python implementation of 'radiusMatch' to work around BUG #1.
+        
+        Python's overhead is negligible in this 'radiusMatch' implementation:
+            ratio of runtime C++/Python: more than 50/1
+        """
         def __init__(self, *args, **kwargs):
             self.this = cv2.BFMatcher(*args, **kwargs)
         
