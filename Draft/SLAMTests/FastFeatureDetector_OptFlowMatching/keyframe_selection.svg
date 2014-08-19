@@ -3821,11 +3821,11 @@
      borderopacity="1.0"
      inkscape:pageopacity="1"
      inkscape:pageshadow="2"
-     inkscape:zoom="1.4"
-     inkscape:cx="619.41194"
-     inkscape:cy="2643.0432"
+     inkscape:zoom="0.98994949"
+     inkscape:cx="492.53735"
+     inkscape:cy="-53.631884"
      inkscape:document-units="px"
-     inkscape:current-layer="g20769"
+     inkscape:current-layer="g22791"
      showgrid="true"
      inkscape:window-width="1280"
      inkscape:window-height="958"
@@ -3850,7 +3850,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -4325,7 +4325,7 @@
    style="font-size:65.00091553%;font-weight:bold;baseline-shift:sub;-inkscape-font-specification:Sans Bold"
    id="flowSpan5903-8-6">A</flowSpan> is now &gt;= <flowSpan
    style="fill:#ff0000"
-   id="flowSpan5909-0-5">min_disp_triangl</flowSpan>, from now on, do pose estimation and triangulation between new frame and <flowSpan
+   id="flowSpan5909-0-5">min_disp_triangl</flowSpan>; from now on, do pose estimation and triangulation between new frame and <flowSpan
    style="font-weight:bold;-inkscape-font-specification:Sans Bold"
    id="flowSpan6560-9">k<flowSpan
    style="font-size:65.00091553%;baseline-shift:sub"
@@ -4481,7 +4481,7 @@
    style="font-size:65.00091553%;font-weight:bold;baseline-shift:sub;-inkscape-font-specification:Sans Bold"
    id="flowSpan5903-8-4">A</flowSpan> is now &gt;= <flowSpan
    style="fill:#008000"
-   id="flowSpan7302-9">min_disp_keyfrm</flowSpan>, new frame is saved as keyframe <flowSpan
+   id="flowSpan7302-9">min_disp_keyfrm</flowSpan>; new frame is saved as keyframe <flowSpan
    id="flowSpan9962"
    style="font-weight:bold;-inkscape-font-specification:Sans Bold">k<flowSpan
    id="flowSpan9964"
@@ -5480,7 +5480,7 @@
    style="font-size:65.00091553%;baseline-shift:sub"
    id="flowSpan12715-0">B</flowSpan></flowSpan> are &gt;= <flowSpan
    style="fill:#008000"
-   id="flowSpan12638-8">min_disp_keyfrm</flowSpan> between, <flowSpan
+   id="flowSpan12638-8">min_disp_keyfrm</flowSpan>; <flowSpan
    style="font-weight:bold;-inkscape-font-specification:Sans Bold"
    id="flowSpan12719-6">k<flowSpan
    style="font-size:65.00091553%;baseline-shift:sub"
