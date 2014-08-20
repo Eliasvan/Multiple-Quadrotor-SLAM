@@ -122,6 +122,28 @@ def reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, ima
     return mean_error, square_error
 
 
+def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, objp, boardSize):
+    """
+    Triangulation and relative pose estimation will be performed from LEFT to RIGHT image.
+    
+    Both images have to contain the whole chessboard,
+    in order to make a decent estimation of the relative pose based on 'solvePnP'.
+    
+    Then the user can manually create matches between non-planar objects.
+    If the user omits this step, only triangulation of the chessboard corners will be performed,
+    and they will be compared to the real 3D points.
+    Otherwise the coordinated of the triangulated points of the manually matched points will be printed,
+    and a relative pose estimation will be performed (using the essential matrix),
+    this pose estimation will be compared with the decent 'solvePnP' estimation.
+    
+    During manual matching process,
+    switching between LEFT and RIGHT image will be done in a zigzag fashion.
+    To stop selecting matches, press SPACE.
+    """
+    
+    print "Not yet implemented."
+
+
 def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, distCoeffs, objp, boardSize):
     """
     This interactive demo will track a chessboard in realtime using a webcam,
@@ -241,13 +263,13 @@ def get_variable(name, func = lambda x: x):
         globals()[name] = value
 
 def main():
-    global boardSize, filename_base_chessboards, filename_intrinsics, filename_distorted, filename_pose_est_triangl_left, filename_pose_est_triangl_right, filename_base_extrinsics, device_id
+    global boardSize, filename_base_chessboards, filename_intrinsics, filename_distorted, filename_triangl_pose_est_left, filename_triangl_pose_est_right, filename_base_extrinsics, device_id
     boardSize = (8, 6)
     filename_base_chessboards = os.path.join("chessboards", "chessboard*.jpg")
     filename_intrinsics = "camera_intrinsics.txt"
     filename_distorted = os.path.join("chessboards", "chessboard07.jpg")    # a randomly chosen image
-    filename_pose_est_triangl_left = os.path.join("chessboards", "chessboard07.jpg")    # a randomly chosen image
-    filename_pose_est_triangl_right = os.path.join("chessboards", "chessboard08.jpg")    # a randomly chosen image
+    filename_triangl_pose_est_left = os.path.join("chessboards", "chessboard07.jpg")    # a randomly chosen image
+    filename_triangl_pose_est_right = os.path.join("chessboards", "chessboard08.jpg")    # a randomly chosen image
     filename_base_extrinsics = os.path.join("chessboards_extrinsic", "chessboard")
     device_id = 1    # webcam
 
@@ -257,9 +279,8 @@ def main():
     print "    3: save_camera_intrinsics"
     print "    4: undistort_image"
     print "    5: reprojection_error"
-    print "    6: relative_pose_estimation_interactive"
-    print "    7: triangulation_interactive"
-    print "    8: realtime_pose_estimation (recommended)"
+    print "    6: triangl_pose_est_interactive"
+    print "    7: realtime_pose_estimation (recommended)"
     print "    q: quit"
     print
     print "Info: Sometimes you will be prompted: 'someVariable [defaultValue]: ',"
@@ -316,24 +337,19 @@ def main():
             print "square error:", square_error
         
         elif inp == "6":
-            get_variable("filename_pose_est_triangl_left")
-            img_left = cv2.imread(filename_pose_est_triangl_left)
-            get_variable("filename_pose_est_triangl_right")
-            img_right = cv2.imread(filename_pose_est_triangl_left)
+            print triangl_pose_est_interactive.__doc__
+            
+            get_variable("filename_triangl_pose_est_left")
+            img_left = cv2.imread(filename_triangl_pose_est_left)
+            get_variable("filename_triangl_pose_est_right")
+            img_right = cv2.imread(filename_triangl_pose_est_right)
             print    # add new-line
             
-            print "Not yet implemented."
+            triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, objp, boardSize)
+            
+            cv2.destroyAllWindows()
         
         elif inp == "7":
-            get_variable("filename_pose_est_triangl_left")
-            img_left = cv2.imread(filename_pose_est_triangl_left)
-            get_variable("filename_pose_est_triangl_right")
-            img_right = cv2.imread(filename_pose_est_triangl_left)
-            print    # add new-line
-            
-            print "Not yet implemented."
-        
-        elif inp == "8":
             print realtime_pose_estimation.__doc__
             
             get_variable("device_id", int)
