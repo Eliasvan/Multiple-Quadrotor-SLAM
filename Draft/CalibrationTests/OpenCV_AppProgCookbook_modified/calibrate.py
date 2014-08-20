@@ -28,7 +28,7 @@ def prepare_object_points(boardSize):
     return objp
 
 
-def calibrate_camera(images, objp, boardSize):
+def calibrate_camera_interactive(images, objp, boardSize):
     # Arrays to store object points and image points from all the images.
     objectPoints = []    # 3d point in real world space
     imagePoints = []    # 2d points in image plane
@@ -231,22 +231,35 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
             tvec_prev = tvec
 
 
+        
+def get_variable(name, func = lambda x: x):
+    value = eval(name)
+    value_inp = raw_input("%s [%s]: " % (name, repr(value)))
+    if value_inp:
+        value = func(value_inp)
+        exec("global " + name)
+        globals()[name] = value
 
 def main():
+    global boardSize, filename_base_chessboards, filename_intrinsics, filename_distorted, filename_pose_est_triangl_left, filename_pose_est_triangl_right, filename_base_extrinsics, device_id
     boardSize = (8, 6)
     filename_base_chessboards = os.path.join("chessboards", "chessboard*.jpg")
     filename_intrinsics = "camera_intrinsics.txt"
     filename_distorted = os.path.join("chessboards", "chessboard07.jpg")    # a randomly chosen image
+    filename_pose_est_triangl_left = os.path.join("chessboards", "chessboard07.jpg")    # a randomly chosen image
+    filename_pose_est_triangl_right = os.path.join("chessboards", "chessboard08.jpg")    # a randomly chosen image
     filename_base_extrinsics = os.path.join("chessboards_extrinsic", "chessboard")
     device_id = 1    # webcam
 
     print "Choose between: (in order)"
     print "    1: prepare_object_points (required)"
-    print "    2: calibrate_camera (required)"
+    print "    2: calibrate_camera_interactive (required)"
     print "    3: save_camera_intrinsics"
     print "    4: undistort_image"
     print "    5: reprojection_error"
-    print "    6: realtime_pose_estimation (recommended)"
+    print "    6: relative_pose_estimation_interactive"
+    print "    7: triangulation_interactive"
+    print "    8: realtime_pose_estimation (recommended)"
     print "    q: quit"
     print
     print "Info: Sometimes you will be prompted: 'someVariable [defaultValue]: ',"
@@ -257,23 +270,19 @@ def main():
         inp = raw_input("\n: ").strip()
         
         if inp == "1":
-            boardSize_inp = raw_input("boardSize [%s]: " % repr(boardSize))
-            if boardSize_inp:
-                exec "boardSize = " + boardSize_inp
+            get_variable("boardSize", lambda x: eval("(%s)" % x))
             print    # add new-line
             
             objp = prepare_object_points(boardSize)
         
         elif inp == "2":
-            filename_base_chessboards_inp = raw_input("filename_base_chessboards [%s]: " % repr(filename_base_chessboards))
-            if filename_base_chessboards_inp:
-                filename_base_chessboards = filename_base_chessboards_inp
+            get_variable("filename_base_chessboards")
             from glob import glob
             images = sorted(glob(filename_base_chessboards))
             print    # add new-line
             
             reproj_error, cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, imagePoints, imageSize = \
-                    calibrate_camera(images, objp, boardSize)
+                    calibrate_camera_interactive(images, objp, boardSize)
             print "cameraMatrix:\n", cameraMatrix
             print "distCoeffs:\n", distCoeffs
             print "reproj_error:", reproj_error
@@ -281,17 +290,13 @@ def main():
             cv2.destroyAllWindows()
         
         elif inp == "3":
-            filename_intrinsics_inp = raw_input("filename_intrinsics [%s]: " % repr(filename_intrinsics))
-            if filename_intrinsics_inp:
-                filename_intrinsics = filename_intrinsics_inp
+            get_variable("filename_intrinsics")
             print    # add new-line
             
             save_camera_intrinsics(filename_intrinsics, cameraMatrix, distCoeffs, imageSize)
         
         elif inp == "4":
-            filename_distorted_inp = raw_input("filename_distorted [%s]: " % repr(filename_distorted))
-            if filename_distorted_inp:
-                filename_distorted = filename_distorted_inp
+            get_variable("filename_distorted")
             img = cv2.imread(filename_distorted)
             print    # add new-line
             
@@ -311,14 +316,28 @@ def main():
             print "square error:", square_error
         
         elif inp == "6":
+            get_variable("filename_pose_est_triangl_left")
+            img_left = cv2.imread(filename_pose_est_triangl_left)
+            get_variable("filename_pose_est_triangl_right")
+            img_right = cv2.imread(filename_pose_est_triangl_left)
+            print    # add new-line
+            
+            print "Not yet implemented."
+        
+        elif inp == "7":
+            get_variable("filename_pose_est_triangl_left")
+            img_left = cv2.imread(filename_pose_est_triangl_left)
+            get_variable("filename_pose_est_triangl_right")
+            img_right = cv2.imread(filename_pose_est_triangl_left)
+            print    # add new-line
+            
+            print "Not yet implemented."
+        
+        elif inp == "8":
             print realtime_pose_estimation.__doc__
             
-            device_id_inp = raw_input("device_id [%s]: " % repr(device_id))
-            if device_id_inp:
-                device_id = int(device_id_inp)
-            filename_base_extrinsics_inp = raw_input("filename_base_extrinsics [%s]: " % repr(filename_base_extrinsics))
-            if filename_base_extrinsics_inp:
-                filename_base_extrinsics = filename_base_extrinsics_inp
+            get_variable("device_id", int)
+            get_variable("filename_base_extrinsics")
             print    # add new-line
             
             realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, distCoeffs, objp, boardSize)
