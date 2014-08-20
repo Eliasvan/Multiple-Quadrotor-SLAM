@@ -65,7 +65,7 @@ def main():
     
     # Select working (or 'testing') set
     from glob import glob
-    images = sorted(glob(os.path.join("captures", "*.jpeg")))
+    images = sorted(glob(os.path.join("captures2", "*.jpeg")))
     
     
     def main_loop(left_points,
@@ -280,6 +280,176 @@ def main():
     left_img = right_img
     left_gray = right_gray
     right_img = cv2.imread(images[3])
+    
+    # Use previous feature points
+    left_points = right_FAST_points
+    
+    # Invoke mail loop
+    right_FAST_points, right_gray, triangl_idxs, chessboard_idxs = \
+            main_loop(left_points, left_gray, left_img, right_img, triangl_idxs, chessboard_idxs)
+    
+    
+    ###----------------------------- Frame 3 -----------------------------###
+    
+    print "###---------------------- Frame 3 ----------------------###"
+
+    # Update data for new frame
+    left_img = right_img
+    left_gray = right_gray
+    right_img = cv2.imread(images[4])
+    
+    # Use previous feature points
+    left_points = right_FAST_points
+    
+    # Invoke mail loop
+    right_FAST_points, right_gray, triangl_idxs, chessboard_idxs = \
+            main_loop(left_points, left_gray, left_img, right_img, triangl_idxs, chessboard_idxs)
+    
+    
+    ###----------------------------- Frame 4 -----------------------------###
+    
+    print "###---------------------- Frame 4 ----------------------###"
+
+    # Update data for new frame
+    left_img = right_img
+    left_gray = right_gray
+    right_img = cv2.imread(images[5])
+    
+    # Use previous feature points
+    left_points = right_FAST_points
+    
+    # Invoke mail loop
+    right_FAST_points, right_gray, triangl_idxs, chessboard_idxs = \
+            main_loop(left_points, left_gray, left_img, right_img, triangl_idxs, chessboard_idxs)
+    
+    
+    ###----------------------------- Frame 5 -----------------------------###
+    
+    print "###---------------------- Frame 5 ----------------------###"
+
+    # Update data for new frame
+    left_img = right_img
+    left_gray = right_gray
+    right_img = cv2.imread(images[6])
+    
+    # Use previous feature points
+    left_points = right_FAST_points
+    
+    # Invoke mail loop
+    right_FAST_points, right_gray, triangl_idxs, chessboard_idxs = \
+            main_loop(left_points, left_gray, left_img, right_img, triangl_idxs, chessboard_idxs)
+    
+    
+    ###----------------------------- Frame 6 -----------------------------###
+    
+    print "###---------------------- Frame 6 ----------------------###"
+
+    # Update data for new frame
+    left_img = right_img
+    left_gray = right_gray
+    right_img = cv2.imread(images[7])
+    
+    # Use previous feature points
+    left_points = right_FAST_points
+    
+    # Invoke mail loop
+    right_FAST_points, right_gray, triangl_idxs, chessboard_idxs = \
+            main_loop(left_points, left_gray, left_img, right_img, triangl_idxs, chessboard_idxs)
+    
+    
+    ###----------------------------- Frame 7 -----------------------------###
+    
+    print "###---------------------- Frame 7 ----------------------###"
+
+    # Update data for new frame
+    left_img = right_img
+    left_gray = right_gray
+    right_img = cv2.imread(images[8])
+    
+    # Use previous feature points
+    left_points = right_FAST_points
+    
+    # Invoke mail loop
+    right_FAST_points, right_gray, triangl_idxs, chessboard_idxs = \
+            main_loop(left_points, left_gray, left_img, right_img, triangl_idxs, chessboard_idxs)
+    
+    
+    ###----------------------------- Frame 8 -----------------------------###
+    
+    print "###---------------------- Frame 8 ----------------------###"
+
+    # Update data for new frame
+    left_img = right_img
+    left_gray = right_gray
+    right_img = cv2.imread(images[9])
+    
+    # Use previous feature points
+    left_points = right_FAST_points
+    
+    # Invoke mail loop
+    right_FAST_points, right_gray, triangl_idxs, chessboard_idxs = \
+            main_loop(left_points, left_gray, left_img, right_img, triangl_idxs, chessboard_idxs)
+    
+    
+    ###----------------------------- Frame 9 -----------------------------###
+    
+    print "###---------------------- Frame 9 ----------------------###"
+
+    # Update data for new frame
+    left_img = right_img
+    left_gray = right_gray
+    right_img = cv2.imread(images[10])
+    
+    # Use previous feature points
+    left_points = right_FAST_points
+    
+    # Invoke mail loop
+    right_FAST_points, right_gray, triangl_idxs, chessboard_idxs = \
+            main_loop(left_points, left_gray, left_img, right_img, triangl_idxs, chessboard_idxs)
+    
+    
+    ###----------------------------- Frame 10 -----------------------------###
+    
+    print "###---------------------- Frame 10 ----------------------###"
+
+    # Update data for new frame
+    left_img = right_img
+    left_gray = right_gray
+    right_img = cv2.imread(images[11])
+    
+    # Use previous feature points
+    left_points = right_FAST_points
+    
+    # Invoke mail loop
+    right_FAST_points, right_gray, triangl_idxs, chessboard_idxs = \
+            main_loop(left_points, left_gray, left_img, right_img, triangl_idxs, chessboard_idxs)
+    
+    
+    ###----------------------------- Frame 11 -----------------------------###
+    
+    print "###---------------------- Frame 11 ----------------------###"
+
+    # Update data for new frame
+    left_img = right_img
+    left_gray = right_gray
+    right_img = cv2.imread(images[12])
+    
+    # Use previous feature points
+    left_points = right_FAST_points
+    
+    # Invoke mail loop
+    right_FAST_points, right_gray, triangl_idxs, chessboard_idxs = \
+            main_loop(left_points, left_gray, left_img, right_img, triangl_idxs, chessboard_idxs)
+    
+    
+    ###----------------------------- Frame 12 -----------------------------###
+    
+    print "###---------------------- Frame 12 ----------------------###"
+
+    # Update data for new frame
+    left_img = right_img
+    left_gray = right_gray
+    right_img = cv2.imread(images[13])
     
     # Use previous feature points
     left_points = right_FAST_points
