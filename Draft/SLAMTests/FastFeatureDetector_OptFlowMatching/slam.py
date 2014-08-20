@@ -169,6 +169,7 @@ def main():
             
             # Update chessboard_idxs
             chessboard_idxs = set(matches_by_trainIdx_chessboard)
+            print "Amount of chessboard features tracked in the new image:", len(chessboard_idxs)
         
         
         # Calculate average filtered OF vector
@@ -176,7 +177,7 @@ def main():
         queryIdxs = [matches_by_trainIdx[trainIdx].queryIdx for trainIdx in trainIdxs]
         mean_OF_vector = (right_FAST_points[trainIdxs] - left_points[queryIdxs]).mean(axis=0)
         mean_OF_vector_length = np.linalg.norm(mean_OF_vector)
-        print "mean_OF_vector (from left to right):", mean_OF_vector, ";    mean_OF_vector_length:", mean_OF_vector_length
+        print "mean_OF_vector (from LEFT to RIGHT):", mean_OF_vector, ";    mean_OF_vector_length:", mean_OF_vector_length
         
         # Partition matches to make a distinction between previously triangulated points and non-triangl.
         matches_left_triangl_to_right_FAST = []
@@ -191,7 +192,7 @@ def main():
         matches_left_to_right_FAST = matches_left_triangl_to_right_FAST + matches_left_non_triangl_to_right_FAST
         
         # Visualize (previously triangulated) left_points of corresponding outlier-filtered right_FAST_points
-        print "Visualize (previously triangulated) left_points of corresponding outlier-filtered right_FAST_points"
+        print "Visualize LEFT  points (previously triangulated)"
         cv2.imshow("img", cv2.drawKeypoints(
                 left_img,
                 [cv2.KeyPoint(left_points[m.queryIdx][0],left_points[m.queryIdx][1], 7.) for m in matches_left_triangl_to_right_FAST],
@@ -199,7 +200,7 @@ def main():
         cv2.waitKey()
         
         # Visualize (previously triangulated) outlier-filtered right_FAST_points
-        print "Visualize (previously triangulated) outlier-filtered right_FAST_points"
+        print "Visualize RIGHT points (previously triangulated)"
         cv2.imshow("img", cv2.drawKeypoints(
                 right_img,
                 [cv2.KeyPoint(right_FAST_points[m.trainIdx][0],right_FAST_points[m.trainIdx][1], 7.) for m in matches_left_triangl_to_right_FAST],
@@ -207,7 +208,7 @@ def main():
         cv2.waitKey()
         
         # Visualize (not yet triangulated) outlier-filtered right_FAST_points
-        print "Visualize (not yet triangulated) left_points of corresponding outlier-filtered right_FAST_points"
+        print "Visualize LEFT  points (not yet triangulated)"
         cv2.imshow("img", cv2.drawKeypoints(
                 left_img,
                 [cv2.KeyPoint(left_points[m.queryIdx][0],left_points[m.queryIdx][1], 7.) for m in matches_left_non_triangl_to_right_FAST],
@@ -215,7 +216,7 @@ def main():
         cv2.waitKey()
         
         # Visualize (not yet triangulated) outlier-filtered right_FAST_points
-        print "Visualize (not yet triangulated) outlier-filtered right_FAST_points"
+        print "Visualize RIGHT points (not yet triangulated)"
         cv2.imshow("img", cv2.drawKeypoints(
                 right_img,
                 [cv2.KeyPoint(right_FAST_points[m.trainIdx][0],right_FAST_points[m.trainIdx][1], 7.) for m in matches_left_non_triangl_to_right_FAST],
@@ -247,8 +248,8 @@ def main():
         raise Exception("No chessboard features detected.")
     
     # Set masks to alter matches' priority
-    chessboard_idxs = set(range(len(left_points) / 2))    # test: handle half of the points as 'chessboard corners'
-    triangl_idxs = set(range(len(left_points)))    # the chessboard feature points are already triangulated
+    chessboard_idxs = set(range(len(left_points)))    # all chessboard corners are in sight
+    triangl_idxs = set(chessboard_idxs)    # the chessboard feature points are already triangulated
     
     # Invoke mail loop
     right_FAST_points, right_gray, triangl_idxs, chessboard_idxs = \
