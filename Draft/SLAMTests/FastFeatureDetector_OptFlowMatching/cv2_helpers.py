@@ -30,6 +30,14 @@ def format3DVector(v):
     return "[ %.3f  %.3f  %.3f ]" % tuple(v)
 
 
+def drawKeypointsAndMotion(img2, points1, points2, color):
+    """Returns a new image with vectors from points1 to points2, and keypoints on img2."""
+    img = cv2.drawKeypoints(img2, [cv2.KeyPoint(p[0],p[1], 7.) for p in points2], color=rgb(0,0,255))
+    for p1, p2 in zip(points1, points2):
+        line(img, p1, p2, color)
+    return img
+
+
 class MultilineText:
     """A class that enables to draw richer text on images."""
     def __init__(self):

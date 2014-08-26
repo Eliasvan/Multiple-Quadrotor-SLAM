@@ -141,7 +141,51 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     To stop selecting matches, press SPACE.
     """
     
-    print "Not yet implemented."
+    # Extract chessboard features
+    ret_left, corners_left = cvh.extractChessboardFeatures(img_left, boardSize)
+    ret_right, corners_right = cvh.extractChessboardFeatures(img_left, boardSize)
+    if not ret_left or not ret_right:
+        print "Chessboard is not (entirely) in sight, aborting."
+        return
+    
+    # Calculate P matrix of left pose    # TODO: put 'P' calculation in module like 'quaternions'
+    P_left = np.eye(4)
+    ret, rvec_left, tvec_left = cv2.solvePnP(
+            objp, corners_left, cameraMatrix, distCoeffs )
+    P_left[0:3, 0:3] = cv2.Rodrigues(rvec_left)
+    P_left[0:3, 3] = tvec_left
+    
+    # Calculate P matrix of right pose
+    P_right = np.eye(4)
+    ret, rvec_right, tvec_right = cv2.solvePnP(
+            objp, corners_right, cameraMatrix, distCoeffs )
+    P_right[0:3, 0:3] = cv2.Rodrigues(rvec_right)
+    P_right[0:3, 3] = tvec_right
+    
+    def linear_LS_triangulation(u, P, u1, P1):
+        """
+        Linear Least Squares based triangulation.
+        
+        (u, P) is the reference pair containing a homogenous image point (x, y, 1) and the camera matrix.
+        (u1, P1) is the second pair.
+        """
+        
+        # Build constant C matrix
+        C = np.array([[-1.,  0.,  0.],
+                      [ 0., -1.,  0.],
+                      [-1.,  0.,  0.],
+                      [ 0., -1.,  0.]])
+        
+        # Build modified C matrix
+        Cm = C
+        Cm[0:2, 2] += u
+        Cm[2:4, 2] += u1
+        
+        # Build A matrix
+        Cm.dot(P)
+        
+    
+    print "Not yet fully implemented."    # TODO: remove
 
 
 def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, distCoeffs, objp, boardSize):
@@ -273,19 +317,24 @@ def main():
     filename_base_extrinsics = os.path.join("chessboards_extrinsic", "chessboard")
     device_id = 1    # webcam
 
-    print "Choose between: (in order)"
-    print "    1: prepare_object_points (required)"
-    print "    2: calibrate_camera_interactive (required)"
-    print "    3: save_camera_intrinsics"
-    print "    4: undistort_image"
-    print "    5: reprojection_error"
-    print "    6: triangl_pose_est_interactive"
-    print "    7: realtime_pose_estimation (recommended)"
-    print "    q: quit"
-    print
-    print "Info: Sometimes you will be prompted: 'someVariable [defaultValue]: ',"
-    print "      in that case you can type a new value,"
-    print "      or simply press ENTER to preserve the default value."
+    help_text = """\
+    Choose between: (in order)
+        1: prepare_object_points (required)
+        2: calibrate_camera_interactive (required)
+        3: save_camera_intrinsics
+        4: undistort_image
+        5: reprojection_error
+        6: triangl_pose_est_interactive
+        7: realtime_pose_estimation (recommended)
+        q: quit
+    
+    Info: Sometimes you will be prompted: 'someVariable [defaultValue]: ',
+          in that case you can type a new value,
+          or simply press ENTER to preserve the default value.
+    """
+    from textwrap import dedent
+    print dedent(help_text)
+    
     inp = ""
     while inp.lower() != "q":
         inp = raw_input("\n: ").strip()
