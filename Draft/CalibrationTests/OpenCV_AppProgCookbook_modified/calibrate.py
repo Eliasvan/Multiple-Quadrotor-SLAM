@@ -170,19 +170,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         (u1, P1) is the second pair.
         """
         
-        # Build constant C matrix
-        C = np.array([[-1.,  0.,  0.],
-                      [ 0., -1.,  0.],
-                      [-1.,  0.,  0.],
-                      [ 0., -1.,  0.]])
-        
-        # Build modified C matrix
-        Cm = C
-        Cm[0:2, 2] += u
-        Cm[2:4, 2] += u1
-        
-        # Build A matrix
-        Cm.dot(P)
+        pass
         
     
     print "Not yet fully implemented."    # TODO: remove
