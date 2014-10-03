@@ -50,12 +50,13 @@ def keyframe_test(points1, points2):
 
 
 
-def handle_new_frame(base_points,    # includes image-points of both triangulated as not-yet triangl points of last keyframe
-                     prev_points,    # includes image-points of last frame
+def handle_new_frame(base_points,    # includes 2D points of both triangulated as not-yet triangl points of last keyframe
+                     prev_points,    # includes 2D points of last frame
                      prev_img, prev_img_gray,
                      new_img, new_img_gray,
-                     all_idxs, triangl_idxs, nontriangl_idxs,    # indices of points in base_points
-                     all_idxs_tmp,    # list of idxs of points in base_points, matches prev_points to base_points
+                     triangl_idxs, nontriangl_idxs,    # indices of 2D points in base_points
+                     imgp_to_objp_idxs,    # indices from 2D points in base_points to 3D points in objp
+                     all_idxs_tmp,    # list of idxs of 2D points in base_points, matches prev_points to base_points
                      objp):    # triangulated 3D points
     
     # Calculate OF (Optical Flow), and filter outliers based on OF error
@@ -69,10 +70,12 @@ def handle_new_frame(base_points,    # includes image-points of both triangulate
     print "# points lost because of excessive OF error / # points before: ", len(prev_points) - len(new_points), "/", len(prev_points), "=", lost_tracks_ratio
     if lost_tracks_ratio > max_lost_tracks_ratio:
         new_points = prev_points
-        return False, base_points, new_points, all_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp, objp, None, None
+        return False, base_points, new_points, triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, None, None
     
     # Save matches by idxs
-    all_idxs_tmp = all_idxs_tmp[list(new_to_prev_idxs)]
+    new_to_prev_idxs = list(new_to_prev_idxs)
+    all_idxs_tmp_old = all_idxs_tmp
+    all_idxs_tmp = all_idxs_tmp[new_to_prev_idxs]
     base_points_remaining = base_points[all_idxs_tmp]
     
     # Check whether we got a new keyframe
@@ -81,31 +84,64 @@ def handle_new_frame(base_points,    # includes image-points of both triangulate
     cv2.imshow("img", cvh.drawKeypointsAndMotion(new_img, base_points_remaining, new_points, rgb(0,0,255)))
     cv2.waitKey()
     if is_keyframe:
+        # Rebase indices to current keyframe
+        #triangl_idxs &= set(all_idxs_tmp)
+        #triangl_idxs = set([set(all_idxs_tmp).index(i) for i in (triangl_idxs & set(all_idxs_tmp))])
+        triangl_idxs = set(i for i, idx in enumerate(all_idxs_tmp) if idx in triangl_idxs)
+        #nontriangl_idxs &= set(all_idxs_tmp)
+        #nontriangl_idxs = set([set(all_idxs_tmp).index(i) for i in (nontriangl_idxs & set(all_idxs_tmp))])
+        nontriangl_idxs = set(i for i, idx in enumerate(all_idxs_tmp) if idx in nontriangl_idxs)
+        imgp_to_objp_idxs = imgp_to_objp_idxs[all_idxs_tmp]
+        all_idxs_tmp = np.arange(len(all_idxs_tmp))
+        
         # TODO
         # Do pose estimation on all points via fundamentalMatrixRansac() and essential matrix,
         # then triangulation of not-yet triangulated points (see nontriangl_idxs),
-        # Then do solvePnpRansac() on all points for a refined pose estimation, and to eliminate outliers (only include 'inliers').
-        # If ratio of 'inliers' vs input is too low, reject frame.
+        # Then do solvePnpRansac() on all (triangulated) points for a refined pose estimation,
+        # and to eliminate outliers (only include 'inliers').
+        # If ratio of 'inliers' vs input is too low, reject frame (and undo rebasing of indices).
         rvec, tvec = None, None    # TODO
+        # use imgp_to_objp_idxs[np.array(tuple( triangl_idxs ))] and
+        #     base_points_remaining[np.array(tuple( nontriangl_idxs ))]
+        # to do the calcs, and output nontriangl_idxs_done:
+        #     calc it starting from (nontriangl_idxs) array
+        nontriangl_idxs_done = set(nontriangl_idxs)    # TODO: replace this with the successfully triangulated 3D points
+        objp_done = np.zeros((len(nontriangl_idxs_done), 3))    # TODO
+        imgp_to_objp_idxs[np.array(tuple(nontriangl_idxs_done), dtype=int)] = np.arange(len(objp), len(objp) + len(objp_done))
+        objp = np.concatenate((objp, objp_done))
+        triangl_idxs |= nontriangl_idxs_done
+        #nontriangl_idxs -= nontriangl_idxs_done
+        nontriangl_idxs.clear()    # the remaining nontriangl_idxs that failed to be triangulated are outliers, forget about them
         
-        # Check whether we should 
+        # Rebase indices and points to inliers
+        all_idxs = triangl_idxs | nontriangl_idxs
+        all_idxs_tmp = np.array([i for i in range(len(all_idxs_tmp)) if i in all_idxs])
+        imgp_to_objp_idxs = imgp_to_objp_idxs[all_idxs_tmp]
+        new_points = new_points[all_idxs_tmp]
+        
+        # Rebase indices to current keyframe
+        triangl_idxs = set(i for i, idx in enumerate(all_idxs_tmp) if idx in triangl_idxs)
+        nontriangl_idxs = set(i for i, idx in enumerate(all_idxs_tmp) if idx in nontriangl_idxs)
+        all_idxs_tmp = np.arange(len(all_idxs_tmp))
+        
+        # Check whether we should add new 2d points
         mask_img = keypoint_mask(new_points)
         print "coverage:", 1 - cv2.countNonZero(mask_img)/float(mask_img.size), "vs min_keypoint_coverage:", min_keypoint_coverage    # unused
-        new_base_points = new_points
         to_add = target_amount_keypoints - len(new_points)
         if to_add > 0:
             print "to_add:", to_add
             ps_extra = cv2.goodFeaturesToTrack(new_img_gray, to_add, corner_quality_level, corner_min_dist, None, mask_img).reshape((-1, 2))
             cv2.imshow("img", cv2.drawKeypoints(new_img, [cv2.KeyPoint(p[0],p[1], 7.) for p in ps_extra], color=rgb(0,0,255)))
             cv2.waitKey()
-            new_base_points = np.concatenate((new_points, ps_extra))
+            if len(ps_extra):
+                new_base_points = np.concatenate((new_points, ps_extra))
+                extra_idxs = np.arange(len(new_points), len(new_base_points))
+                nontriangl_idxs |= set(extra_idxs)
+                imgp_to_objp_idxs = np.concatenate((imgp_to_objp_idxs, np.array([-1] * len(ps_extra))))    # add '-1' idxs, because not-yet-triangl
+                all_idxs_tmp = np.concatenate((all_idxs_tmp, extra_idxs))
             print "added:", len(ps_extra)
-        
-        # Rebase indices to current keyframe
-        all_idxs = np.arange(len(new_base_points))
-        triangl_idxs = set(all_idxs[:len(new_points)])
-        nontriangl_idxs = set(all_idxs[len(new_points):])
-        all_idxs_tmp = np.array(all_idxs)
+        else:
+            new_base_points = new_points
         
         # Now this frame becomes the base (= keyframe)
         base_points = new_base_points
@@ -116,27 +152,41 @@ def handle_new_frame(base_points,    # includes image-points of both triangulate
         # Just do solvePnp() on current frame's (new_points) already triangulated points to get its pose estimation.
         # If ratio of 'inliers' vs input is too low, reject frame.
         
-        rvec, tvec = None, None    # TODO
-        #filtered_triangl_idxs = np.array(tuple( triangl_idxs & set(all_idxs_tmp) ))
-        #ret, rvec, tvec = cv2.solvePnP(
-                #objp[filtered_triangl_idxs], base_points[filtered_triangl_idxs], cameraMatrix, distCoeffs )
-        #print "rvec: \n%s" % rvec
-        #print "tvec: \n%s" % tvec
+        filtered_triangl_idxs = np.array(tuple(triangl_idxs & set(all_idxs_tmp)), dtype=int)
+        filtered_triangl_points = base_points[filtered_triangl_idxs]
+        filtered_triangl_objp = objp[imgp_to_objp_idxs[filtered_triangl_idxs]]
+        ret, rvec, tvec = cv2.solvePnP(    # TODO: useExtrinsicGuess
+                filtered_triangl_objp, filtered_triangl_points, cameraMatrix, distCoeffs )
+        print "rvec: \n%s" % rvec
+        print "tvec: \n%s" % tvec
+        
+        imgp_reproj, jacob = cv2.projectPoints(
+                filtered_triangl_objp, rvec, tvec, cameraMatrix, distCoeffs )
+        reproj_error = (
+                    ((imgp_reproj.reshape(-1, 2) - filtered_triangl_points)**2).sum(axis=0) / 
+                    np.prod(boardSize)
+                ).sum() / 2
+        print "solvePnP reproj_error:", reproj_error
+        if reproj_error > max_solvePnP_reproj_error:    # reject frame
+            new_points = prev_points
+            return False, base_points, new_points, triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp_old, objp, None, None
     
     
-    return True, base_points, new_points, all_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp, objp, rvec, tvec
+    return True, base_points, new_points, triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, rvec, tvec
 
 
 def main():
+    global boardSize
     global cameraMatrix, distCoeffs, imageSize
     global max_OF_error, max_lost_tracks_ratio
     global keypoint_coverage_radius, min_keypoint_coverage
     global target_amount_keypoints, corner_quality_level, corner_min_dist
     global homography_condition_threshold
+    global max_solvePnP_reproj_error, max_fundMat_reproj_error
     
     # Initially known data
     boardSize = (8, 6)
-    objp = prepare_object_points(boardSize)
+    objp = prepare_object_points(boardSize)    # 3D points
     
     cameraMatrix, distCoeffs, imageSize = \
             load_camera_intrinsics("camera_intrinsics.txt")
@@ -156,11 +206,9 @@ def main():
     corner_min_dist = keypoint_coverage_radius
     # keyframe_test
     homography_condition_threshold = 500    # defined as ratio between max and min singular values
-    
-    
-    # Initiate 2d 3d arrays
-    objectPoints = []
-    imagePoints = []
+    # reprojection error
+    max_solvePnP_reproj_error = 0.5
+    max_fundMat_reproj_error = 2.0
     
     
     # Select working (or 'testing') set
@@ -177,11 +225,11 @@ def main():
     imgs.append(cv2.imread(images[0]))
     imgs_gray.append(cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY))
     ret, new_points = cvh.extractChessboardFeatures(imgs[0], boardSize)
-    base_points = new_points
-    all_idxs = np.arange(len(base_points))
-    triangl_idxs = set(all_idxs)
-    nontriangl_idxs = set([])
-    all_idxs_tmp = np.array(all_idxs)
+    base_points = new_points    # 2D points
+    all_idxs_tmp = np.arange(len(base_points))
+    triangl_idxs = set(all_idxs_tmp)
+    nontriangl_idxs = set()
+    imgp_to_objp_idxs = np.array(tuple(triangl_idxs), dtype=int)
     ret, rvec, tvec = cv2.solvePnP(    # assume first frame is a proper frame with chessboard fully in-sight
             objp, new_points, cameraMatrix, distCoeffs )
     rvecs.append(rvec)
@@ -192,8 +240,8 @@ def main():
         print "\nFrame[%s] -> Frame[%s]" % (i-1, i)
         imgs.append(cv2.imread(images[i]))
         imgs_gray.append(cv2.cvtColor(imgs[-1], cv2.COLOR_BGR2GRAY))
-        ret, base_points, new_points, all_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp, objp, rvec, tvec = \
-                handle_new_frame(base_points, new_points, imgs[-2], imgs_gray[-2], imgs[-1], imgs_gray[-1], all_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp, objp)
+        ret, base_points, new_points, triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, rvec, tvec = \
+                handle_new_frame(base_points, new_points, imgs[-2], imgs_gray[-2], imgs[-1], imgs_gray[-1], triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp)
         if ret:
             rvecs.append(rvec)
             tvecs.append(tvec)

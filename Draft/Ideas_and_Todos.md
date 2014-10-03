@@ -3,7 +3,7 @@ TODO
 
 - [x] apply mask to goodFeauturesToTrack() -> no converge ratio-test
 
-- [ ] solvePnp() between non-keyframes
+- [x] solvePnp() between non-keyframes
 
 - [x] in case of bad frames, if #extrapolatedOFpoints < threshold
 
