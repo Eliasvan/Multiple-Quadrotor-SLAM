@@ -30,6 +30,14 @@ def format3DVector(v):
     return "[ %.3f  %.3f  %.3f ]" % tuple(v)
 
 
+def drawKeypointsAndMotion(img2, points1, points2, color):
+    """Returns a new image with vectors from points1 to points2, and keypoints on img2."""
+    img = cv2.drawKeypoints(img2, [cv2.KeyPoint(p[0],p[1], 7.) for p in points2], color=rgb(0,0,255))
+    for p1, p2 in zip(points1, points2):
+        line(img, p1, p2, color)
+    return img
+
+
 class MultilineText:
     """A class that enables to draw richer text on images."""
     def __init__(self):
@@ -100,3 +108,87 @@ def extractChessboardFeatures(img, boardSize):
         corners = corners.reshape(-1, 2)
     
     return ret, corners
+
+
+"""
+The following code works around some OpenCV BUGs:
+(written on 2014-08-18 11:38:56 AM)
+
+BUG #1:
+    opencv/modules/features2d/include/opencv2/features2d.hpp near line 749:
+        "CV_WRAP" is omitted for the method "radiusMatch",
+        which results in hiding this method for higher-level languages such as Python and Java.
+BUG #2:
+    opencv/modules/core/src/stat.cpp near line 3209:
+        An assert gets triggered when argument "OutputArray _nidx" of function "cv::batchDistance()"
+        is set to "None" (Python) while "int K" is set to "0".
+        This means that (_nidx::needed() != NULL) when (_nidx == "None" (Python)),
+        to fix this: _nidx::needed() should evaluate to "NULL".
+"""
+native_BFMatcher = cv2.BFMatcher()
+has_native_radiusMatch = "radiusMatch" in dir(native_BFMatcher)
+
+if has_native_radiusMatch:
+    BFMatcher = cv2.BFMatcher
+    
+else:
+    class BFMatcher:
+        """
+        Wrapper class + Python implementation of 'radiusMatch' to work around BUG #1.
+        
+        Python's overhead is negligible in this 'radiusMatch' implementation:
+            ratio of runtime C++/Python: more than 50/1
+        """
+        def __init__(self, *args, **kwargs):
+            self.this = cv2.BFMatcher(*args, **kwargs)
+        
+        def radiusMatch(self, query_points, train_points, max_radius, **kwargs):
+            """
+            kNN radius match with k=2.
+            """
+            dist_matrix, nidx_matrix = cv2.batchDistance(
+                    query_points, train_points,
+                    cv2.cv.CV_32F,    # FIXME: infer dtype from query_points.dtype
+                    None, None,    # dist, nidx: output args
+                    self.getInt("normType"),
+                    train_points.shape[0],    # work around BUG #2
+                    None, 0, False )    # called as implemented in C-impl of 'radiusMatch'
+            
+            matches = []
+            for queryIdx, (dists_from_query_point, nidx_from_query_point) in \
+                    enumerate(zip(dist_matrix, nidx_matrix)):
+                # Initialize to 'no good matches'
+                query_matches = []
+                valid_idxs = np.where(dists_from_query_point <= max_radius)[0]
+                
+                # There is at least one good match
+                if valid_idxs.size:
+                    dist_valid = dists_from_query_point[valid_idxs]
+                    nidx_valid = nidx_from_query_point[valid_idxs]
+                    
+                    # Append the best match, as fist match
+                    dist_first_idx = dist_valid.argmin()
+                    query_matches.append(cv2.DMatch(
+                            queryIdx,
+                            nidx_valid[dist_first_idx],    # trainIdx
+                            dist_valid[dist_first_idx] ))    # distance
+                    
+                    # There is at least another one good match, append the best one, as second match
+                    if dist_valid.size > 1:
+                        dist_valid[dist_first_idx] = float("inf")    # exclude this one from next 'argmin' step
+                        dist_second_idx = dist_valid.argmin()
+                        query_matches.append(cv2.DMatch(
+                                queryIdx,
+                                nidx_valid[dist_second_idx],    # trainIdx
+                                dist_valid[dist_second_idx] ))    # distance
+                
+                # Add list of matches corresponding with this queryIdx
+                matches.append(query_matches)
+            
+            return matches
+    
+    # Append remaining methods of the native BFMatcher class
+    for methodName in dir(native_BFMatcher):
+        if not methodName.startswith('_'):
+            exec("def method(self, *args, **kwargs): return self.this.%s(*args, **kwargs)" % methodName)
+            setattr(BFMatcher, methodName, method)

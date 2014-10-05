@@ -122,6 +122,59 @@ def reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, ima
     return mean_error, square_error
 
 
+# Initialize consts or tmp vars to be used in linear_LS_triangulation()
+linear_LS_triangulation_c = -np.eye(2, 3)
+linear_LS_triangulation_A = np.zeros((4, 3))
+linear_LS_triangulation_b = np.zeros((4, 1))
+
+def linear_LS_triangulation(u, P, K_inv, u1, P1, K1_inv):
+    """
+    Linear Least Squares based triangulation.
+    WARNING: image distortion is not compensated (?)
+    TODO: flip rows and columns to increase performance (improve for cache)
+    
+    (u, P) is the reference pair containing (non-homogenous) image points and the corresponding camera matrix.
+    (u1, P1) is the second pair.
+    K_inv and K1_inv are the corresponding inverse camera calibration matrices.
+    
+    u and u1 are matrices: amount of points equals #columns and should be equal for u and u1.
+    """
+    global linear_LS_triangulation_A, linear_LS_triangulation_b
+    
+    # Create a temporary matrix to represent u and u1 in homogenous coordinates
+    ux_homogenous = np.zeros((3, u.shape[1]))
+    ux_homogenous[2, :] = 1
+    
+    # Normalize image points
+    ux_homogenous[0:2, :] = u
+    u_normalized = K_inv[0:2, :].dot(ux_homogenous)
+    ux_homogenous[0:2, :] = u1
+    u1_normalized = K1_inv[0:2, :].dot(ux_homogenous)
+    
+    # Create array of triangulated points
+    x = np.zeros((3, u.shape[1]))
+    
+    for i in range(u.shape[1]):
+        # Build C matrices, to visualize calculation structure
+        C = np.array(linear_LS_triangulation_c)
+        C[:, 2] = u[:, i]
+        C1 = np.array(linear_LS_triangulation_c)
+        C1[:, 2] = u1[:, i]
+        
+        # Build A matrix
+        linear_LS_triangulation_A[0:2, :] = C.dot(P[0:3, 0:3])    # C * R
+        linear_LS_triangulation_A[2:4, :] = C1.dot(P1[0:3, 0:3])    # C1 * R1
+        
+        # Build b vector
+        linear_LS_triangulation_b[0:2, :] = C.dot(P[0:3, 3:4])    # C * t
+        linear_LS_triangulation_b[2:4, :] = C1.dot(P1[0:3, 3:4])    # C1 * t1
+        linear_LS_triangulation_b *= -1
+        
+        # Solve for x vector
+        cv2.solve(linear_LS_triangulation_A, linear_LS_triangulation_b, x[:, i:i+1], cv2.DECOMP_SVD)
+    
+    return x
+
 def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, objp, boardSize):
     """
     Triangulation and relative pose estimation will be performed from LEFT to RIGHT image.
@@ -132,7 +185,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     Then the user can manually create matches between non-planar objects.
     If the user omits this step, only triangulation of the chessboard corners will be performed,
     and they will be compared to the real 3D points.
-    Otherwise the coordinated of the triangulated points of the manually matched points will be printed,
+    Otherwise the coordinates of the triangulated points of the manually matched points will be printed,
     and a relative pose estimation will be performed (using the essential matrix),
     this pose estimation will be compared with the decent 'solvePnP' estimation.
     
@@ -143,7 +196,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     
     # Extract chessboard features
     ret_left, corners_left = cvh.extractChessboardFeatures(img_left, boardSize)
-    ret_right, corners_right = cvh.extractChessboardFeatures(img_left, boardSize)
+    ret_right, corners_right = cvh.extractChessboardFeatures(img_right, boardSize)
     if not ret_left or not ret_right:
         print "Chessboard is not (entirely) in sight, aborting."
         return
@@ -152,26 +205,26 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     P_left = np.eye(4)
     ret, rvec_left, tvec_left = cv2.solvePnP(
             objp, corners_left, cameraMatrix, distCoeffs )
-    P_left[0:3, 0:3] = cv2.Rodrigues(rvec_left)
-    P_left[0:3, 3] = tvec_left
+    P_left[0:3, 0:3], jacob = cv2.Rodrigues(rvec_left)
+    P_left[0:3, 3:4] = tvec_left
     
     # Calculate P matrix of right pose
     P_right = np.eye(4)
     ret, rvec_right, tvec_right = cv2.solvePnP(
             objp, corners_right, cameraMatrix, distCoeffs )
-    P_right[0:3, 0:3] = cv2.Rodrigues(rvec_right)
-    P_right[0:3, 3] = tvec_right
+    P_right[0:3, 0:3], jacob = cv2.Rodrigues(rvec_right)
+    P_right[0:3, 3:4] = tvec_right
     
-    def linear_LS_triangulation(u, P, u1, P1):
-        """
-        Linear Least Squares based triangulation.
-        
-        (u, P) is the reference pair containing a homogenous image point (x, y, 1) and the camera matrix.
-        (u1, P1) is the second pair.
-        """
-        
-        pass
-        
+    
+    # Triangulate ("user can manually create matches between non-planar objects" is omitted for now)
+    ret, K_inv = cv2.invert(cameraMatrix)
+    objp_result = linear_LS_triangulation(
+            corners_left.T, P_left, K_inv,
+            corners_right.T, P_right, K_inv )
+    print "objp:"
+    print objp
+    print "objp_result:"
+    print objp_result.T
     
     print "Not yet fully implemented."    # TODO: remove
 
@@ -308,12 +361,13 @@ def main():
     help_text = """\
     Choose between: (in order)
         1: prepare_object_points (required)
-        2: calibrate_camera_interactive (required)
+        2: calibrate_camera_interactive (required for "reprojection_error")
         3: save_camera_intrinsics
-        4: undistort_image
-        5: reprojection_error
-        6: triangl_pose_est_interactive
-        7: realtime_pose_estimation (recommended)
+        4: load_camera_intrinsics (required)
+        5: undistort_image
+        6: reprojection_error
+        7: triangl_pose_est_interactive
+        8: realtime_pose_estimation (recommended)
         q: quit
     
     Info: Sometimes you will be prompted: 'someVariable [defaultValue]: ',
@@ -354,6 +408,13 @@ def main():
             save_camera_intrinsics(filename_intrinsics, cameraMatrix, distCoeffs, imageSize)
         
         elif inp == "4":
+            get_variable("filename_intrinsics")
+            print    # add new-line
+            
+            cameraMatrix, distCoeffs, imageSize = \
+                    load_camera_intrinsics(filename_intrinsics)
+        
+        elif inp == "5":
             get_variable("filename_distorted")
             img = cv2.imread(filename_distorted)
             print    # add new-line
@@ -367,13 +428,13 @@ def main():
             
             cv2.destroyAllWindows()
         
-        elif inp == "5":
+        elif inp == "6":
             mean_error, square_error = \
                     reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, imagePoints, boardSize)
             print "mean absolute error:", mean_error
             print "square error:", square_error
         
-        elif inp == "6":
+        elif inp == "7":
             print triangl_pose_est_interactive.__doc__
             
             get_variable("filename_triangl_pose_est_left")
@@ -386,7 +447,7 @@ def main():
             
             cv2.destroyAllWindows()
         
-        elif inp == "7":
+        elif inp == "8":
             print realtime_pose_estimation.__doc__
             
             get_variable("device_id", int)
