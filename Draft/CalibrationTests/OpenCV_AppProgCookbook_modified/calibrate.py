@@ -157,9 +157,9 @@ def linear_LS_triangulation(u, P, K_inv, u1, P1, K1_inv):
     for i in range(u.shape[1]):
         # Build C matrices, to visualize calculation structure
         C = np.array(linear_LS_triangulation_c)
-        C[:, 2] = u[:, i]
+        C[:, 2] = u_normalized[:, i]
         C1 = np.array(linear_LS_triangulation_c)
-        C1[:, 2] = u1[:, i]
+        C1[:, 2] = u1_normalized[:, i]
         
         # Build A matrix
         linear_LS_triangulation_A[0:2, :] = C.dot(P[0:3, 0:3])    # C * R
@@ -217,10 +217,30 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     
     
     # Triangulate ("user can manually create matches between non-planar objects" is omitted for now)
+    def print_to_blender(rvec_left, tvec_left, rvec_right, tvec_right, objp_result):
+        print "Camera poses:"
+        def print_pose(rvec, tvec):
+            ax, an = qwts.axis_and_angle_from_rvec(-rvec)
+            print "axis, angle = \\\n", list(ax.reshape(-1)), ",", an    # R
+            print "pos = \\\n", list(-cv2.Rodrigues(-rvec)[0].dot(tvec).reshape(-1))    # t
+        print "Left"
+        print_pose(rvec_left, tvec_left)
+        print
+        print "Right"
+        print_pose(rvec_right, tvec_right)
+        print
+        
+        print "Points:"
+        print "coords = \\\n", map(list, objp_result)
+        print
+    
     ret, K_inv = cv2.invert(cameraMatrix)
+    print P_left[0:3, :]
+    print P_right[0:3, :]
     objp_result = linear_LS_triangulation(
             corners_left.T, P_left, K_inv,
             corners_right.T, P_right, K_inv )
+    print_to_blender(rvec_left, tvec_left, rvec_right, tvec_right, objp_result.T)
     print "objp:"
     print objp
     print "objp_result:"
