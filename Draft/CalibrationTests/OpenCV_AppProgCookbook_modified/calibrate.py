@@ -216,8 +216,42 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     P_right[0:3, 3:4] = tvec_right
     
     
+    # Calculate relative pose using the essential matrix    (WARNING: image distortion is not compensated (?))
+    F, status = cv2.findFundamentalMat(corners_left, corners_right, cv2.FM_RANSAC, 0.006 * np.amax(corners_left), 0.99)    # threshold from [Snavely07 4.1]
+    E = (cameraMatrix.T) .dot (F) .dot (cameraMatrix)    # according to "Multiple View Geometry in C.V." by Hartley&Zisserman (9.12)    TODO check reference
+    w, u, vt = cv2.SVDecomp(E, flags=cv2.SVD_MODIFY_A)    # Hartley&Zisserman (9.19)    TODO check reference
+    W = np.array([[0., -1., 0.],    # Hartley&Zisserman (9.13)    TODO check reference
+                  [1.,  0., 0.],
+                  [0.,  0., 1.]])
+    R = (u) .dot (W) .dot (vt)    # Hartley&Zisserman (9.19)    TODO check reference
+    t = u[:, 2:3]
+    P = np.eye(4)
+    P[0:3, 0:3] = R
+    P[0:3, 3:4] = t
+    ret, P_inv = cv2.invert(P)
+    
+    print "Coherent rotation?", (abs(cv2.determinant(R)) - 1 <= 1e-7)
+    
+    P_left_result = P_inv.dot(P_right)
+    P_right_result = P.dot(P_left)
+    
+    print "P_left"
+    print P_left
+    print "P_rel"
+    print P
+    print "P_right"
+    print P_right
+    
+    print "P_left_result"
+    print P_left_result
+    print "P_right_result"
+    print P_right_result
+    
+    
     # Triangulate ("user can manually create matches between non-planar objects" is omitted for now)
-    def print_to_blender(rvec_left, tvec_left, rvec_right, tvec_right, objp_result):
+    def print_to_blender(rvec_left, tvec_left, rvec_right, tvec_right,
+                         P_left_result, P_right_result,
+                         objp_result):
         print "Camera poses:"
         def print_pose(rvec, tvec):
             ax, an = qwts.axis_and_angle_from_rvec(-rvec)
@@ -226,8 +260,16 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         print "Left"
         print_pose(rvec_left, tvec_left)
         print
+        print "Left_result"
+        rvec_left_result, jacob = cv2.Rodrigues(P_left_result[0:3, 0:3])
+        print_pose(rvec_left_result, P_left_result[0:3, 3:4])
+        print
         print "Right"
         print_pose(rvec_right, tvec_right)
+        print
+        print "Right_result"
+        rvec_right_result, jacob = cv2.Rodrigues(P_right_result[0:3, 0:3])
+        print_pose(rvec_right_result, P_right_result[0:3, 3:4])
         print
         
         print "Points:"
@@ -235,12 +277,10 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         print
     
     ret, K_inv = cv2.invert(cameraMatrix)
-    print P_left[0:3, :]
-    print P_right[0:3, :]
     objp_result = linear_LS_triangulation(
             corners_left.T, P_left, K_inv,
             corners_right.T, P_right, K_inv )
-    print_to_blender(rvec_left, tvec_left, rvec_right, tvec_right, objp_result.T)
+    print_to_blender(rvec_left, tvec_left, rvec_right, tvec_right, P_left_result, P_right_result, objp_result.T)
     print "objp:"
     print objp
     print "objp_result:"
