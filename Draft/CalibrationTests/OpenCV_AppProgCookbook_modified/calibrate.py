@@ -7,7 +7,7 @@
     View demo video at http://www.youtube.com/watch?v=SX2qodUfDaA
 """
 import os
-from math import degrees
+from math import degrees, pi
 import numpy as np
 import transforms as trfm
 import cv2
@@ -164,7 +164,7 @@ def linear_LS_triangulation(u, P, K, K_inv, distCoeffs, u1, P1, K1, K1_inv, dist
     
     return x
 
-def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, objp, boardSize, nonplanar_left, nonplanar_right):
+def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, imageSize, objp, boardSize, nonplanar_left, nonplanar_right):
     """ (TODO: remove debug-prints)
     Triangulation and relative pose estimation will be performed from LEFT to RIGHT image.
     
@@ -183,6 +183,9 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     During manual matching process,
     switching between LEFT and RIGHT image will be done in a zigzag fashion.
     To stop selecting matches, press SPACE.
+    
+    Additionally, you can also introduce predefined non-planar geometry,
+    this is e.g. useful if you don't want to select non-planar geometry manually.
     """
     
     ### Setup initial state, and calc some very accurate poses to compare against with later
@@ -216,6 +219,79 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
             objp, planar_right, K_right, distCoeffs_right )
     P_right = trfm.P_from_R_and_t(cvh.Rodrigues(rvec_right), tvec_right)
     
+    # Load previous non-planar inliers, if desired
+    if nonplanar_left.size and not raw_input("Type 'no' if you don't want to use previous non-planar inliers? ").strip().lower() == "no":
+        nonplanar_left = map(tuple, nonplanar_left)
+        nonplanar_right = map(tuple, nonplanar_left)
+    else:
+        nonplanar_left = []
+        nonplanar_right = []
+    
+    
+    ### Create predefined non-planar 3D geometry, to enable automatic selection of non-planar points
+    
+    if raw_input("Type 'yes' if you want to create and select predefined non-planar geometry? ").strip().lower() == "yes":
+        
+        # A cube
+        cube_coords = np.array([(0., 0., 0.), (1., 0., 0.), (1., 1., 0.), (0., 1., 0.),
+                                (0., 0., 1.), (1., 0., 1.), (1., 1., 1.), (0., 1., 1.)])
+        cube_coords *= 2    # scale
+        cube_edges = np.array([(0, 1), (1, 2), (2, 3), (3, 0),
+                               (4, 5), (5, 6), (6, 7), (7, 4),
+                               (0, 4), (1, 5), (2, 6), (3, 7)])
+        
+        # An 8-point circle
+        s2 = 1. / np.sqrt(2)
+        circle_coords = np.array([( 1.,  0., 0.), ( s2,  s2, 0.),
+                                  ( 0.,  1., 0.), (-s2,  s2, 0.),
+                                  (-1.,  0., 0.), (-s2, -s2, 0.),
+                                  ( 0., -1., 0.), ( s2, -s2, 0.)])
+        circle_edges = np.array([(i, (i+1) % 8) for i in range(8)])
+        
+        # Position 2 cubes and 2 circles in the scene
+        cube1 = np.array(cube_coords)
+        cube1[:, 1] -= 1
+        cube2 = np.array(cube_coords)
+        cube2 = cvh.Rodrigues((0., 0., pi/4)).dot(cube2.T).T
+        cube2[:, 0] += 4
+        cube2[:, 1] += 3
+        cube2[:, 2] += 2
+        circle1 = np.array(circle_coords)
+        circle1 *= 2
+        circle1[:, 1] += 5
+        circle1[:, 2] += 2
+        circle2 = np.array(circle_coords)
+        circle2 = cvh.Rodrigues((pi/2, 0., 0.)).dot(circle2.T).T
+        circle2[:, 1] += 5
+        circle2[:, 2] += 2
+        
+        # Print output to be used in Blender
+        print
+        print "Cubes"
+        print "edges_cube = \\\n", map(list, cube_edges)
+        print "coords_cube1 = \\\n", map(list, cube1)
+        print "coords_cube2 = \\\n", map(list, cube2)
+        print
+        print "Circles"
+        print "edges_circle = \\\n", map(list, circle_edges)
+        print "coords_circle1 = \\\n", map(list, circle1)
+        print "coords_circle2 = \\\n", map(list, circle2)
+        print
+        
+        color = rgb(0, 200, 150)
+        for verts, edges in zip([cube1, cube2, circle1, circle2],
+                                [cube_edges, cube_edges, circle_edges, circle_edges]):
+            out_left = cvh.wireframe3DGeometry(
+                    img_left, verts, edges, color, rvec_left, tvec_left, K_left, distCoeffs_left )
+            out_right = cvh.wireframe3DGeometry(
+                    img_right, verts, edges, color, rvec_right, tvec_right, K_right, distCoeffs_right )
+            valid_match_idxs = [i for i, (pl, pr) in enumerate(zip(out_left, out_right))
+                                    if 0 <= min(pl[0], pr[0]) <= max(pl[0], pr[0]) < imageSize[0] and 
+                                        0 <= min(pl[1], pr[1]) <= max(pl[1], pr[1]) < imageSize[1]
+                                ]
+            nonplanar_left += map(tuple, out_left[valid_match_idxs])    # concatenate
+            nonplanar_right += map(tuple, out_right[valid_match_idxs])    # concatenate
+    
     
     ### User can manually create matches between non-planar objects
     
@@ -238,6 +314,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
                     self.img_idx = 1 - self.img_idx
         
         def run(self):
+            print "Select your matches. Press SPACE when done."
             while True:
                 img = cv2.drawKeypoints(self.images[self.img_idx], [cv2.KeyPoint(p[0],p[1], 7.) for p in self.points[self.img_idx]], color=rgb(0,0,255))
                 cv2.imshow(self.window_name, img)
@@ -250,12 +327,6 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
             print "Selected", len(self.points[0]), "pairs of matches."
     
     # Execute the manual matching
-    if nonplanar_left.size and not raw_input("Type 'no' if you don't want to use previous non-planar inliers? ").strip().lower() == "no":
-        nonplanar_left = map(tuple, nonplanar_left)
-        nonplanar_right = map(tuple, nonplanar_left)
-    else:
-        nonplanar_left = []
-        nonplanar_right = []
     ManualMatcher("Select match-points of non-planar objects", [img_left, img_right], [nonplanar_left, nonplanar_right]).run()
     num_nonplanar = len(nonplanar_left)
     has_nonplanar = (num_nonplanar > 0)
@@ -302,7 +373,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         # Workaround by to test on outliers: use "!= 1", instead of "== 0"
         print status.T
         inlier_idxs = np.where(status == 1)[0]
-        print "Removed", allfeatures_nrm_left.shape[0] - inlier_idxs.shape[0], "outliers."
+        print "Removed", allfeatures_nrm_left.shape[0] - inlier_idxs.shape[0], "outlier(s)."
         num_planar = np.where(inlier_idxs < num_planar)[0].shape[0]
         num_nonplanar = inlier_idxs.shape[0] - num_planar
         print "num chessboard inliers:", num_planar
@@ -429,10 +500,10 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         print P_left_result
         print "P_right_result"
         print P_right_result
-        print "=> error:", reprojection_error(
+        print "=> error:", reprojection_error(    # we use "P_left" instead of "P_left_result" because the latter depends on the unknown "P_right"
                 cameraMatrix, distCoeffs,
-                [cvh.Rodrigues(P_left_result[0:3, 0:3]), cvh.Rodrigues(P_right_result[0:3, 0:3])],
-                [P_left_result[0:3, 3], P_right_result[0:3, 3]],
+                [cvh.Rodrigues(P_left[0:3, 0:3]), cvh.Rodrigues(P_right_result[0:3, 0:3])],
+                [P_left[0:3, 3], P_right_result[0:3, 3]],
                 [objp_orig] * 2, [planar_left_orig, planar_right_orig], boardSize )[1]
     
     
@@ -481,10 +552,10 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         if num_planar + num_nonplanar == 0:
             print "=> error: undefined"
         else:
-            print "Total combined error:", reprojection_error(
+            print "Total combined error:", reprojection_error(    # we use "P_left" instead of "P_left_result" because the latter depends on the unknown "P_right"
                     cameraMatrix, distCoeffs,
-                    [cvh.Rodrigues(P_left_result[0:3, 0:3]), cvh.Rodrigues(P_right_result[0:3, 0:3])],
-                    [P_left_result[0:3, 3], P_right_result[0:3, 3]],
+                    [cvh.Rodrigues(P_left[0:3, 0:3]), cvh.Rodrigues(P_right_result[0:3, 0:3])],
+                    [P_left[0:3, 3], P_right_result[0:3, 3]],
                     [objp_result.T] * 2,
                     [allfeatures_left, allfeatures_right], boardSize )[1]
     
@@ -753,7 +824,7 @@ def main():
             print    # add new-line
             
             nonplanar_left, nonplanar_right = \
-                    triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, objp, boardSize, nonplanar_left, nonplanar_right)
+                    triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, imageSize, objp, boardSize, nonplanar_left, nonplanar_right)
             
             cv2.destroyAllWindows()
         
