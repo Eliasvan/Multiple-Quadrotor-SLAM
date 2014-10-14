@@ -25,6 +25,10 @@ def circle(img, c, rad, col, *args, **kwargs):
     return cv2.circle(img, tuple(c), rad, col, *args, **kwargs)
 def putText(img, txt, p, fF, fS, col, *args, **kwargs):
     return cv2.putText(img, txt, tuple(p), fF, fS, col, *args, **kwargs)
+def Rodrigues(rvec_or_R):
+    return cv2.Rodrigues(rvec_or_R)[0]    # only output R or rvec, not the jacobian
+def invert(matrix):
+    return cv2.invert(matrix)[1]    # only output the result, not the status; use with care
 
 def format3DVector(v):
     return "[ %.3f  %.3f  %.3f ]" % tuple(v)

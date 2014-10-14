@@ -9,7 +9,7 @@
 import os
 from math import degrees
 import numpy as np
-import quaternions as qwts
+import transforms as trfm
 import cv2
 import cv2_helpers as cvh
 from cv2_helpers import rgb, format3DVector
@@ -127,13 +127,12 @@ linear_LS_triangulation_c = -np.eye(2, 3)
 linear_LS_triangulation_A = np.zeros((4, 3))
 linear_LS_triangulation_b = np.zeros((4, 1))
 
-def linear_LS_triangulation(u, P, K_inv, u1, P1, K1_inv):
+def linear_LS_triangulation(u, P, K, K_inv, distCoeffs, u1, P1, K1, K1_inv, distCoeffs1):
     """
     Linear Least Squares based triangulation.
-    WARNING: image distortion is not compensated (?)
     TODO: flip rows and columns to increase performance (improve for cache)
     
-    (u, P) is the reference pair containing (non-homogenous) image points and the corresponding camera matrix.
+    (u, P) is the reference pair containing homogenous image coordinates (x, y) and the corresponding camera matrix.
     (u1, P1) is the second pair.
     K_inv and K1_inv are the corresponding inverse camera calibration matrices.
     
@@ -141,25 +140,15 @@ def linear_LS_triangulation(u, P, K_inv, u1, P1, K1_inv):
     """
     global linear_LS_triangulation_A, linear_LS_triangulation_b
     
-    # Create a temporary matrix to represent u and u1 in homogenous coordinates
-    ux_homogenous = np.zeros((3, u.shape[1]))
-    ux_homogenous[2, :] = 1
-    
-    # Normalize image points
-    ux_homogenous[0:2, :] = u
-    u_normalized = K_inv[0:2, :].dot(ux_homogenous)
-    ux_homogenous[0:2, :] = u1
-    u1_normalized = K1_inv[0:2, :].dot(ux_homogenous)
-    
     # Create array of triangulated points
     x = np.zeros((3, u.shape[1]))
     
     for i in range(u.shape[1]):
         # Build C matrices, to visualize calculation structure
         C = np.array(linear_LS_triangulation_c)
-        C[:, 2] = u_normalized[:, i]
+        C[:, 2] = u[:, i]
         C1 = np.array(linear_LS_triangulation_c)
-        C1[:, 2] = u1_normalized[:, i]
+        C1[:, 2] = u1[:, i]
         
         # Build A matrix
         linear_LS_triangulation_A[0:2, :] = C.dot(P[0:3, 0:3])    # C * R
@@ -175,8 +164,8 @@ def linear_LS_triangulation(u, P, K_inv, u1, P1, K1_inv):
     
     return x
 
-def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, objp, boardSize):
-    """
+def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, objp, boardSize, nonplanar_left, nonplanar_right):
+    """ (TODO: remove debug-prints)
     Triangulation and relative pose estimation will be performed from LEFT to RIGHT image.
     
     Both images have to contain the whole chessboard,
@@ -188,105 +177,361 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     Otherwise the coordinates of the triangulated points of the manually matched points will be printed,
     and a relative pose estimation will be performed (using the essential matrix),
     this pose estimation will be compared with the decent 'solvePnP' estimation.
+    In that case you will be asked whether you want to mute the chessboard corners in all calculations,
+    note that this requires at least 8 pairs of matches corresponding with non-planar geometry.
     
     During manual matching process,
     switching between LEFT and RIGHT image will be done in a zigzag fashion.
     To stop selecting matches, press SPACE.
     """
     
-    # Extract chessboard features
-    ret_left, corners_left = cvh.extractChessboardFeatures(img_left, boardSize)
-    ret_right, corners_right = cvh.extractChessboardFeatures(img_right, boardSize)
+    ### Setup initial state, and calc some very accurate poses to compare against with later
+    
+    K_left = cameraMatrix
+    K_right = cameraMatrix
+    K_inv_left = cvh.invert(K_left)
+    K_inv_right = cvh.invert(K_right)
+    distCoeffs_left = distCoeffs
+    distCoeffs_right = distCoeffs
+    
+    # Extract chessboard features, together they form a set of 'planar' points
+    ret_left, planar_left = cvh.extractChessboardFeatures(img_left, boardSize)
+    ret_right, planar_right = cvh.extractChessboardFeatures(img_right, boardSize)
     if not ret_left or not ret_right:
         print "Chessboard is not (entirely) in sight, aborting."
         return
     
-    # Calculate P matrix of left pose    # TODO: put 'P' calculation in module like 'quaternions'
-    P_left = np.eye(4)
+    # Save exact 2D and 3D points of the chessboard
+    num_planar = planar_left.shape[0]
+    planar_left_orig, planar_right_orig = planar_left, planar_right
+    objp_orig = objp
+    
+    # Calculate P matrix of left pose, in reality this one is known
     ret, rvec_left, tvec_left = cv2.solvePnP(
-            objp, corners_left, cameraMatrix, distCoeffs )
-    P_left[0:3, 0:3], jacob = cv2.Rodrigues(rvec_left)
-    P_left[0:3, 3:4] = tvec_left
+            objp, planar_left, K_left, distCoeffs_left )
+    P_left = trfm.P_from_R_and_t(cvh.Rodrigues(rvec_left), tvec_left)
     
-    # Calculate P matrix of right pose
-    P_right = np.eye(4)
+    # Calculate P matrix of right pose, in reality this one is unknown
     ret, rvec_right, tvec_right = cv2.solvePnP(
-            objp, corners_right, cameraMatrix, distCoeffs )
-    P_right[0:3, 0:3], jacob = cv2.Rodrigues(rvec_right)
-    P_right[0:3, 3:4] = tvec_right
+            objp, planar_right, K_right, distCoeffs_right )
+    P_right = trfm.P_from_R_and_t(cvh.Rodrigues(rvec_right), tvec_right)
     
     
-    # Calculate relative pose using the essential matrix    (WARNING: image distortion is not compensated (?))
-    F, status = cv2.findFundamentalMat(corners_left, corners_right, cv2.FM_RANSAC, 0.006 * np.amax(corners_left), 0.99)    # threshold from [Snavely07 4.1]
-    E = (cameraMatrix.T) .dot (F) .dot (cameraMatrix)    # according to "Multiple View Geometry in C.V." by Hartley&Zisserman (9.12)    TODO check reference
-    w, u, vt = cv2.SVDecomp(E, flags=cv2.SVD_MODIFY_A)    # Hartley&Zisserman (9.19)    TODO check reference
-    W = np.array([[0., -1., 0.],    # Hartley&Zisserman (9.13)    TODO check reference
-                  [1.,  0., 0.],
-                  [0.,  0., 1.]])
-    R = (u) .dot (W) .dot (vt)    # Hartley&Zisserman (9.19)    TODO check reference
-    t = u[:, 2:3]
-    P = np.eye(4)
-    P[0:3, 0:3] = R
-    P[0:3, 3:4] = t
-    ret, P_inv = cv2.invert(P)
+    ### User can manually create matches between non-planar objects
     
-    print "Coherent rotation?", (abs(cv2.determinant(R)) - 1 <= 1e-7)
+    class ManualMatcher:
+        def __init__(self, window_name, images, points):
+            self.window_name = window_name
+            self.images = images
+            self.points = points
+            self.img_idx = 0    # 0: left; 1: right
+            cv2.namedWindow(window_name)
+            cv2.setMouseCallback(window_name, self.onMouse)
+        
+        def onMouse(self, event, x, y, flags, userdata):
+            if event == cv2.EVENT_LBUTTONDOWN:
+                self.points[self.img_idx].append((x, y))
+            
+            elif event == cv2.EVENT_LBUTTONUP:
+                # Switch images in a ping-pong fashion
+                if len(self.points[0]) != len(self.points[1]):
+                    self.img_idx = 1 - self.img_idx
+        
+        def run(self):
+            while True:
+                img = cv2.drawKeypoints(self.images[self.img_idx], [cv2.KeyPoint(p[0],p[1], 7.) for p in self.points[self.img_idx]], color=rgb(0,0,255))
+                cv2.imshow(self.window_name, img)
+                key = cv2.waitKey(50) & 0xFF
+                if key == ord(' '): break    # finish if SPACE is pressed
+            
+            num_points_diff = len(self.points[0]) - len(self.points[1])
+            if num_points_diff:
+                del self.points[num_points_diff < 0][-abs(num_points_diff):]
+            print "Selected", len(self.points[0]), "pairs of matches."
     
-    P_left_result = P_inv.dot(P_right)
-    P_right_result = P.dot(P_left)
+    # Execute the manual matching
+    if nonplanar_left.size and not raw_input("Type 'no' if you don't want to use previous non-planar inliers? ").strip().lower() == "no":
+        nonplanar_left = map(tuple, nonplanar_left)
+        nonplanar_right = map(tuple, nonplanar_left)
+    else:
+        nonplanar_left = []
+        nonplanar_right = []
+    ManualMatcher("Select match-points of non-planar objects", [img_left, img_right], [nonplanar_left, nonplanar_right]).run()
+    num_nonplanar = len(nonplanar_left)
+    has_nonplanar = (num_nonplanar > 0)
+    if 0 < num_nonplanar < 8:
+        print "Warning: you've selected less than 8 pairs of matches."
+    nonplanar_left = np.array(nonplanar_left).reshape(num_nonplanar, 2)
+    nonplanar_right = np.array(nonplanar_right).reshape(num_nonplanar, 2)
     
-    print "P_left"
-    print P_left
-    print "P_rel"
-    print P
-    print "P_right"
-    print P_right
+    mute_chessboard_corners = False
+    if num_nonplanar >= 8 and raw_input("Type 'yes' if you want to exclude chessboard corners from calculations? ").strip().lower() == "yes":
+        mute_chessboard_corners = True
+        num_planar = 0
+        planar_left = np.zeros((0, 2))
+        planar_right = np.zeros((0, 2))
+        objp = np.zeros((0, 3))
+        print "Chessboard corners muted."
     
-    print "P_left_result"
-    print P_left_result
-    print "P_right_result"
-    print P_right_result
+    has_prev_triangl_points = not mute_chessboard_corners    # normally in this example, this should always be True, unless user forces False
     
     
-    # Triangulate ("user can manually create matches between non-planar objects" is omitted for now)
-    def print_to_blender(rvec_left, tvec_left, rvec_right, tvec_right,
-                         P_left_result, P_right_result,
-                         objp_result):
-        print "Camera poses:"
+    ### Undistort points => normalized coordinates
+    
+    allfeatures_left = np.concatenate((planar_left, nonplanar_left))
+    allfeatures_right = np.concatenate((planar_right, nonplanar_right))
+    
+    allfeatures_nrm_left = cv2.undistortPoints(np.array([allfeatures_left]), K_left, distCoeffs_left)[0]
+    allfeatures_nrm_right = cv2.undistortPoints(np.array([allfeatures_right]), K_right, distCoeffs_right)[0]
+    
+    planar_nrm_left, nonplanar_nrm_left = allfeatures_nrm_left[:planar_left.shape[0]], allfeatures_nrm_left[planar_left.shape[0]:]
+    planar_nrm_right, nonplanar_nrm_right = allfeatures_nrm_right[:planar_right.shape[0]], allfeatures_nrm_right[planar_right.shape[0]:]
+    
+    
+    ### Calculate relative pose using the essential matrix
+    
+    # Only do pose estimation if we've got 2D points of non-planar geometry
+    if has_nonplanar:
+    
+        # Determine inliers by calculating the fundamental matrix on all points,
+        # except when mute_chessboard_corners is True: only use nonplanar_nrm_left and nonplanar_nrm_right
+        F, status = cv2.findFundamentalMat(allfeatures_nrm_left, allfeatures_nrm_right, cv2.FM_RANSAC, 0.006 * np.amax(allfeatures_nrm_left), 0.99)    # threshold from [Snavely07 4.1]
+        # OpenCV BUG: "status" matrix is not initialized with zeros in some cases, reproducable with 2 sets of 8 2D points equal to (0., 0.)
+        #   maybe because "_mask.create()" is not called:
+        #   https://github.com/Itseez/opencv/blob/7e2bb63378dafb90063af40caff20c363c8c9eaf/modules/calib3d/src/ptsetreg.cpp#L185
+        # Workaround by to test on outliers: use "!= 1", instead of "== 0"
+        print status.T
+        inlier_idxs = np.where(status == 1)[0]
+        print "Removed", allfeatures_nrm_left.shape[0] - inlier_idxs.shape[0], "outliers."
+        num_planar = np.where(inlier_idxs < num_planar)[0].shape[0]
+        num_nonplanar = inlier_idxs.shape[0] - num_planar
+        print "num chessboard inliers:", num_planar
+        allfeatures_left, allfeatures_right = allfeatures_left[inlier_idxs], allfeatures_right[inlier_idxs]
+        allfeatures_nrm_left, allfeatures_nrm_right = allfeatures_nrm_left[inlier_idxs], allfeatures_nrm_right[inlier_idxs]
+        if not mute_chessboard_corners:
+            objp = objp[inlier_idxs[:num_planar]]
+            planar_left, planar_right = allfeatures_left[:num_planar], allfeatures_right[:num_planar]
+            planar_nrm_left, planar_nrm_right = allfeatures_nrm_left[:num_planar], allfeatures_nrm_right[:num_planar]
+        nonplanar_nrm_left, nonplanar_nrm_right = allfeatures_nrm_left[num_planar:], allfeatures_nrm_right[num_planar:]
+        
+        # Calculate first solution of relative pose
+        if allfeatures_nrm_left.shape[0] >= 8:
+            F, status = cv2.findFundamentalMat(allfeatures_nrm_left, allfeatures_nrm_right, cv2.FM_8POINT)
+            print "F:"
+            print F
+        else:
+            print "Error: less than 8 pairs of inliers found, I can't perform the 8-point algorithm."
+        #E = (K_right.T) .dot (F) .dot (K_left)    # "Multiple View Geometry in CV" by Hartley&Zisserman (9.12)
+        E = F    # K = I because we already normalized the coordinates
+        print "Correct determinant of essential matrix?", (abs(cv2.determinant(E)) <= 1e-7)
+        w, u, vt = cv2.SVDecomp(E, flags=cv2.SVD_MODIFY_A)
+        print w
+        if ((w[0] < w[1] and w[0]/w[1]) or (w[1] < w[0] and w[1]/w[0]) or 0) < 0.7:
+            print "Essential matrix' 'w' vector deviates too much from expected"
+        W = np.array([[0., -1., 0.],    # Hartley&Zisserman (9.13)
+                      [1.,  0., 0.],
+                      [0.,  0., 1.]])
+        R = (u) .dot (W) .dot (vt)    # Hartley&Zisserman result 9.19
+        det_R = cv2.determinant(R)
+        print "Coherent rotation?", (abs(det_R) - 1 <= 1e-7)
+        if det_R - (-1) < 1e-7:    # http://en.wikipedia.org/wiki/Essential_matrix#Showing_that_it_is_valid
+            # E *= -1:
+            vt *= -1    # svd(-E) = u * w * (-v).T
+            R *= -1     # => u * W * (-v).T = -R
+            print "det(R) == -1, compensated."
+        t = u[:, 2:3]    # Hartley&Zisserman result 9.19
+        P = trfm.P_from_R_and_t(R, t)
+        
+        # Select right solution where the (center of the) 3d points are/is in front of both cameras,
+        # when has_prev_triangl_points == True, we can do it a lot faster.
+        
+        test_point = np.ones((4, 1))    # 3D point to test the solutions with
+        
+        if has_prev_triangl_points:
+            print "Using advantage of already triangulated points' position"
+            print P
+            
+            # Select the closest already triangulated cloudpoint idx to the center of the cloud
+            center_of_mass = objp.sum(axis=0) / objp.shape[0]
+            center_objp_idx = np.argmin(((objp - center_of_mass)**2).sum(axis=1))
+            print "center_objp_idx:", center_objp_idx
+            
+            # Select the corresponding image points
+            center_imgp_left = planar_nrm_left[center_objp_idx]
+            center_imgp_right = planar_nrm_right[center_objp_idx]
+            
+            # Select the corresponding 3D point
+            test_point[0:3, :] = objp[center_objp_idx].reshape(3, 1)
+            print "test_point:"
+            print test_point
+            test_point = P_left.dot(test_point)    # set the reference axis-system to the one of the left camera, note that are_points_in_front_of_left_camera is automatically True
+            
+            center_objp_triangl = linear_LS_triangulation(
+                    center_imgp_left.reshape(2, 1), np.eye(4), K_left, K_inv_left, distCoeffs_left,
+                    center_imgp_right.reshape(2, 1), P, K_right, K_inv_right, distCoeffs_right )
+            
+            if (center_objp_triangl.T) .dot (test_point[0:3, 0:1]) < 0:
+                P[0:3, 3:4] *= -1    # do a baseline reversal
+                print P, "fixed triangulation inversion"
+            
+            if P[0:3, :].dot(test_point)[2, 0] < 0:    # are_points_in_front_of_right_camera is False
+                P[0:3, 0:3] = (u) .dot (W.T) .dot (vt)    # use the other solution of the twisted pair ...
+                P[0:3, 3:4] *= -1    # ... and also do a baseline reversal
+                print P, "fixed camera projection inversion"
+        
+        elif num_nonplanar > 0:
+            print "Doing all ambiguity checks since there are no already triangulated points"
+            print P
+            
+            for i in range(4):    # check all 4 solutions
+                objp_triangl = linear_LS_triangulation(
+                        nonplanar_nrm_left.T, np.eye(4), K_left, K_inv_left, distCoeffs_left,
+                        nonplanar_nrm_right.T, P, K_right, K_inv_right, distCoeffs_right )
+                center_of_mass = objp_triangl.sum(axis=1) / objp_triangl.shape[1]    # select the center of the triangulated cloudpoints
+                test_point[0:3, :] = center_of_mass.reshape(3, 1)
+                print "test_point:"
+                print cvh.invert(P_left) .dot (test_point)
+                
+                if np.eye(3, 4).dot(test_point)[2, 0] > 0 and P[0:3, :].dot(test_point)[2, 0] > 0:    # are_points_in_front_of_cameras is True
+                    break
+                
+                if i % 2:
+                    P[0:3, 0:3] = (u) .dot (W.T) .dot (vt)   # use the other solution of the twisted pair
+                    print P, "using the other solution of the twisted pair"
+                
+                else:
+                    P[0:3, 3:4] *= -1    # do a baseline reversal
+                    print P, "doing a baseline reversal"
+        
+        
+        are_points_in_front_of_left_camera = (np.eye(3, 4).dot(test_point)[2, 0] > 0)
+        are_points_in_front_of_right_camera = (P[0:3, :].dot(test_point)[2, 0] > 0)
+        print "are_points_in_front_of_cameras?", are_points_in_front_of_left_camera, are_points_in_front_of_right_camera
+        if not (are_points_in_front_of_left_camera and are_points_in_front_of_right_camera):
+            print "No valid solution found!"
+        
+        P_left_result = cvh.invert(P).dot(P_right)
+        P_right_result = P.dot(P_left)
+        
+        print "P_left"
+        print P_left
+        print "P_rel"
+        print P
+        print "P_right"
+        print P_right
+        print "=> error:", reprojection_error(
+                cameraMatrix, distCoeffs,
+                [rvec_left, rvec_right],
+                [tvec_left, tvec_right],
+                [objp_orig] * 2, [planar_left_orig, planar_right_orig], boardSize )[1]
+        
+        print "P_left_result"
+        print P_left_result
+        print "P_right_result"
+        print P_right_result
+        print "=> error:", reprojection_error(
+                cameraMatrix, distCoeffs,
+                [cvh.Rodrigues(P_left_result[0:3, 0:3]), cvh.Rodrigues(P_right_result[0:3, 0:3])],
+                [P_left_result[0:3, 3], P_right_result[0:3, 3]],
+                [objp_orig] * 2, [planar_left_orig, planar_right_orig], boardSize )[1]
+    
+    
+    ### Triangulate
+    
+    objp_result = np.zeros((3, 0))
+    
+    if has_prev_triangl_points:
+        # Do triangulation of all points
+        # NOTICE: in a real case, we should only use not yet triangulated points that are in sight
+        objp_result = linear_LS_triangulation(
+                allfeatures_nrm_left.T, P_left, K_left, K_inv_left, distCoeffs_left,
+                allfeatures_nrm_right.T, P_right, K_right, K_inv_right, distCoeffs_right )
+    
+    elif num_nonplanar > 0:
+        # We already did the triangulation during the pose estimation, but we still need to backtransform them from the left camera axis-system
+        objp_result = cvh.invert(P_left) .dot (np.concatenate((objp_triangl, np.ones((1, objp_triangl.shape[1])))))
+        objp_result = objp_result[0:3, :]
+        print objp_triangl.T
+    
+    print "objp:"
+    print objp
+    print "=> error:", reprojection_error(
+            cameraMatrix, distCoeffs, [rvec_left, rvec_right], [tvec_left, tvec_right],
+            [objp_orig] * 2,
+            [planar_left_orig, planar_right_orig], boardSize )[1]
+    
+    print "objp_result of chessboard:"
+    print objp_result.T[:num_planar, :]
+    if has_nonplanar:
+        print "objp_result of non-planar geometry:"
+        print objp_result.T[num_planar:, :]
+    if num_planar + num_nonplanar == 0:
+        print "=> error: undefined"
+    else:
+        print "=> error:", reprojection_error(
+                cameraMatrix, distCoeffs, [rvec_left, rvec_right], [tvec_left, tvec_right],
+                [objp_result.T] * 2,
+                [allfeatures_left, allfeatures_right], boardSize )[1]
+    
+    
+    ### Print total combined reprojection error
+    
+    # We only have both pose estimation and triangulation if we've got 2D points of non-planar geometry
+    if has_nonplanar:
+        if num_planar + num_nonplanar == 0:
+            print "=> error: undefined"
+        else:
+            print "Total combined error:", reprojection_error(
+                    cameraMatrix, distCoeffs,
+                    [cvh.Rodrigues(P_left_result[0:3, 0:3]), cvh.Rodrigues(P_right_result[0:3, 0:3])],
+                    [P_left_result[0:3, 3], P_right_result[0:3, 3]],
+                    [objp_result.T] * 2,
+                    [allfeatures_left, allfeatures_right], boardSize )[1]
+    
+    
+    """
+    Further things we can do (in a real case):
+        1. solvePnP() on inliers (including previously already triangulated points),
+            or should we use solvePnPRansac() (in that case what to do with the outliers)?
+        2. re-triangulate on new pose estimation
+    """
+    
+    
+    ### Print summary to be used in Blender to visualize
+    
+    print "Camera poses:"
+    if has_nonplanar:
         def print_pose(rvec, tvec):
-            ax, an = qwts.axis_and_angle_from_rvec(-rvec)
+            ax, an = trfm.axis_and_angle_from_rvec(-rvec)
             print "axis, angle = \\\n", list(ax.reshape(-1)), ",", an    # R
-            print "pos = \\\n", list(-cv2.Rodrigues(-rvec)[0].dot(tvec).reshape(-1))    # t
+            print "pos = \\\n", list(-cvh.Rodrigues(-rvec).dot(tvec).reshape(-1))    # t
         print "Left"
         print_pose(rvec_left, tvec_left)
         print
         print "Left_result"
-        rvec_left_result, jacob = cv2.Rodrigues(P_left_result[0:3, 0:3])
-        print_pose(rvec_left_result, P_left_result[0:3, 3:4])
+        print_pose(cvh.Rodrigues(P_left_result[0:3, 0:3]), P_left_result[0:3, 3:4])
         print
         print "Right"
         print_pose(rvec_right, tvec_right)
         print
         print "Right_result"
-        rvec_right_result, jacob = cv2.Rodrigues(P_right_result[0:3, 0:3])
-        print_pose(rvec_right_result, P_right_result[0:3, 3:4])
+        print_pose(cvh.Rodrigues(P_right_result[0:3, 0:3]), P_right_result[0:3, 3:4])
         print
-        
-        print "Points:"
-        print "coords = \\\n", map(list, objp_result)
+    else:
+        print "<skipped: no non-planar objects have been selected>"
         print
     
-    ret, K_inv = cv2.invert(cameraMatrix)
-    objp_result = linear_LS_triangulation(
-            corners_left.T, P_left, K_inv,
-            corners_right.T, P_right, K_inv )
-    print_to_blender(rvec_left, tvec_left, rvec_right, tvec_right, P_left_result, P_right_result, objp_result.T)
-    print "objp:"
-    print objp
-    print "objp_result:"
-    print objp_result.T
+    print "Points:"
+    print "Chessboard"
+    print "coords = \\\n", map(list, objp_result.T[:num_planar, :])
+    print 
+    if has_nonplanar:
+        print "Non-planar geometry"
+        print "coords_nonplanar = \\\n", map(list, objp_result.T[num_planar:, :])
+        print
     
-    print "Not yet fully implemented."    # TODO: remove
+    ### Return to remember last manually matched successful non-planar imagepoints
+    return nonplanar_left, nonplanar_right
 
 
 def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, distCoeffs, objp, boardSize):
@@ -307,10 +552,10 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
     To quit, press ESC.
     """
     cv2.namedWindow("Image (with axis-system)")
-    axis_system_objp = np.array([ [0., 0., 0.],   # Origin (black)
-                                  [4., 0., 0.],   # X-axis (red)
-                                  [0., 4., 0.],   # Y-axis (green)
-                                  [0., 0., 4.] ]) # Z-axis (blue)
+    axis_system_objp = np.array([ [0., 0., 0.],      # Origin (black)
+                                  [4., 0., 0.],      # X-axis (red)
+                                  [0., 4., 0.],      # Y-axis (green)
+                                  [0., 0., 4.] ])    # Z-axis (blue)
     fontFace = cv2.FONT_HERSHEY_DUPLEX
     fontScale = 0.5
     mlt = cvh.MultilineText()
@@ -340,19 +585,19 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
             origin, xAxis, yAxis, zAxis = rounding(imgp_reproj.reshape(-1, 2)) # round to nearest int
             
             # OpenCV's 'rvec' and 'tvec' seem to be defined as follows:
-            #   'rvec': rotation transformation: "CAMERA axis-system -> WORLD axis-system"
-            #   'tvec': translation of "CAMERA -> WORLD", defined in the "CAMERA axis-system"
-            rvec *= -1    # convert to: "WORLD axis-system -> CAMERA axis-system"
-            tvec = cv2.Rodrigues(rvec)[0].dot(tvec)    # bring to "WORLD axis-system", ...
-            tvec *= -1    # ... and change direction to "WORLD -> CAMERA"
+            #   'rvec': rotation transformation: transforms points from "WORLD axis-system -> CAMERA axis-system"
+            #   'tvec': translation of "CAMERA center -> WORLD center", all defined in the "CAMERA axis-system"
+            rvec *= -1    # convert to: "CAMERA axis-system -> WORLD axis-system", equivalent to rotation of CAMERA axis-system w.r.t. WORLD axis-system
+            tvec = cvh.Rodrigues(rvec).dot(tvec)    # bring to "WORLD axis-system", ...
+            tvec *= -1    # ... and change direction to "WORLD center -> CAMERA center"
             
             # Calculate pose relative to last keyframe
-            rvec_rel = -qwts.delta_rvec(-rvec, -rvec_prev)    # calculate the inverse of the rotation between subsequent "CAMERA -> WORLD" rotations
+            rvec_rel = -trfm.delta_rvec(-rvec, -rvec_prev)    # calculate the inverse of the rotation between subsequent "WORLD -> CAMERA" rotations
             tvec_rel = tvec - tvec_prev
             
             # Extract axis and angle, to enhance representation
-            rvec_axis, rvec_angle = qwts.axis_and_angle_from_rvec(rvec)
-            rvec_rel_axis, rvec_rel_angle = qwts.axis_and_angle_from_rvec(rvec_rel)
+            rvec_axis, rvec_angle = trfm.axis_and_angle_from_rvec(rvec)
+            rvec_rel_axis, rvec_rel_angle = trfm.axis_and_angle_from_rvec(rvec_rel)
             
             # Draw axis-system
             cvh.line(img, origin, xAxis, rgb(255,0,0), thickness=2, lineType=cv2.CV_AA)
@@ -413,10 +658,14 @@ def main():
     filename_base_chessboards = os.path.join("chessboards", "chessboard*.jpg")
     filename_intrinsics = "camera_intrinsics.txt"
     filename_distorted = os.path.join("chessboards", "chessboard07.jpg")    # a randomly chosen image
-    filename_triangl_pose_est_left = os.path.join("chessboards", "chessboard07.jpg")    # a randomly chosen image
-    filename_triangl_pose_est_right = os.path.join("chessboards", "chessboard08.jpg")    # a randomly chosen image
+    #filename_triangl_pose_est_left = os.path.join("chessboards", "chessboard07.jpg")    # a randomly chosen image
+    #filename_triangl_pose_est_right = os.path.join("chessboards", "chessboard08.jpg")    # a randomly chosen image
+    filename_triangl_pose_est_left = os.path.join("chessboards_and_nonplanar", "image-0001.jpeg")    # a randomly chosen image
+    filename_triangl_pose_est_right = os.path.join("chessboards_and_nonplanar", "image-0056.jpeg")    # a randomly chosen image
     filename_base_extrinsics = os.path.join("chessboards_extrinsic", "chessboard")
     device_id = 1    # webcam
+
+    nonplanar_left = nonplanar_right = np.zeros((0, 2))
 
     help_text = """\
     Choose between: (in order)
@@ -503,7 +752,8 @@ def main():
             img_right = cv2.imread(filename_triangl_pose_est_right)
             print    # add new-line
             
-            triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, objp, boardSize)
+            nonplanar_left, nonplanar_right = \
+                    triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, objp, boardSize, nonplanar_left, nonplanar_right)
             
             cv2.destroyAllWindows()
         
