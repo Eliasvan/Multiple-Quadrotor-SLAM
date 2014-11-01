@@ -25,6 +25,10 @@ def circle(img, c, rad, col, *args, **kwargs):
     return cv2.circle(img, tuple(c), rad, col, *args, **kwargs)
 def putText(img, txt, p, fF, fS, col, *args, **kwargs):
     return cv2.putText(img, txt, tuple(p), fF, fS, col, *args, **kwargs)
+def Rodrigues(rvec_or_R):
+    return cv2.Rodrigues(rvec_or_R)[0]    # only output R or rvec, not the jacobian
+def invert(matrix):
+    return cv2.invert(matrix)[1]    # only output the result, not the status; use with care
 
 def format3DVector(v):
     return "[ %.3f  %.3f  %.3f ]" % tuple(v)
@@ -88,6 +92,27 @@ class MultilineText:
         # Return drawn area
         rectangle = start_point, start_point + self._size
         return rectangle
+
+
+def wireframe3DGeometry(img, verts, edges, col,
+                        rvec, tvec, cameraMatrix, distCoeffs):
+    """Draws a 3D object in wireframe, returns the resulting projection imagepoints."""
+    
+    # Calculate image-projections
+    verts_imgp, jacob = cv2.projectPoints(
+            verts, rvec, tvec, cameraMatrix, distCoeffs )
+    rounding = np.vectorize(lambda x: int(round(x)))
+    verts_imgp = rounding(verts_imgp.reshape(-1, 2)) # round to nearest int
+    
+    # Draw edges and vertices, in that order to prioritize vertices' appearance
+    for edge in edges:
+        v1, v2 = verts_imgp[edge]
+        line(img, v1, v2, col, thickness=2, lineType=cv2.CV_AA)
+    for vert in verts_imgp:
+        circle(img, vert, 4, rgb(0,0,0), thickness=-1)    # filled circle, radius 4
+        circle(img, vert, 5, col, thickness=2)    # circle circumference, radius 5
+    
+    return verts_imgp
 
 
 def extractChessboardFeatures(img, boardSize):
