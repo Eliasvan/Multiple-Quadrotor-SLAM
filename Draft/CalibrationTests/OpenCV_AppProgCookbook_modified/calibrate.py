@@ -19,6 +19,7 @@ from cv2_helpers import rgb, format3DVector
 def prepare_object_points(boardSize):
     """
     Prepare object points, like (0,0,0), (0,1,0), (0,2,0) ... ,(5,7,0).
+    boardSize[0] is used as Y-axis, boardSize[1] as X-axis.
     """
     objp = np.zeros((np.prod(boardSize), 3), np.float32)
     objp[:,:] = np.array([ map(float, [i, j, 0])
@@ -104,7 +105,7 @@ def undistort_image(img, cameraMatrix, distCoeffs, imageSize):
     return img_undistorted, roi
 
 
-def reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, imagePoints, boardSize):
+def reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, imagePoints):
     mean_error = np.zeros((1, 2))
     square_error = np.zeros((1, 2))
     n_images = len(imagePoints)
@@ -113,8 +114,8 @@ def reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, ima
         imgp_reproj, jacob = cv2.projectPoints(
                 objectPoints[i], rvecs[i], tvecs[i], cameraMatrix, distCoeffs )
         error = imgp_reproj.reshape(-1, 2) - imagePoints[i]
-        mean_error += abs(error).sum(axis=0) / np.prod(boardSize)
-        square_error += (error**2).sum(axis=0) / np.prod(boardSize)
+        mean_error += abs(error).sum(axis=0) / len(imagePoints[i])
+        square_error += (error**2).sum(axis=0) / len(imagePoints[i])
 
     mean_error = cv2.norm(mean_error / n_images)
     square_error = np.sqrt(square_error.sum() / n_images)
@@ -127,14 +128,13 @@ linear_LS_triangulation_c = -np.eye(2, 3)
 linear_LS_triangulation_A = np.zeros((4, 3))
 linear_LS_triangulation_b = np.zeros((4, 1))
 
-def linear_LS_triangulation(u, P, K, K_inv, distCoeffs, u1, P1, K1, K1_inv, distCoeffs1):
+def linear_LS_triangulation(u, P, u1, P1):
     """
     Linear Least Squares based triangulation.
     TODO: flip rows and columns to increase performance (improve for cache)
     
     (u, P) is the reference pair containing homogenous image coordinates (x, y) and the corresponding camera matrix.
     (u1, P1) is the second pair.
-    K_inv and K1_inv are the corresponding inverse camera calibration matrices.
     
     u and u1 are matrices: amount of points equals #columns and should be equal for u and u1.
     """
@@ -143,11 +143,13 @@ def linear_LS_triangulation(u, P, K, K_inv, distCoeffs, u1, P1, K1, K1_inv, dist
     # Create array of triangulated points
     x = np.zeros((3, u.shape[1]))
     
+    # Initialize C matrices
+    C = np.array(linear_LS_triangulation_c)
+    C1 = np.array(linear_LS_triangulation_c)
+    
     for i in range(u.shape[1]):
         # Build C matrices, to visualize calculation structure
-        C = np.array(linear_LS_triangulation_c)
         C[:, 2] = u[:, i]
-        C1 = np.array(linear_LS_triangulation_c)
         C1[:, 2] = u1[:, i]
         
         # Build A matrix
@@ -370,7 +372,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         # OpenCV BUG: "status" matrix is not initialized with zeros in some cases, reproducable with 2 sets of 8 2D points equal to (0., 0.)
         #   maybe because "_mask.create()" is not called:
         #   https://github.com/Itseez/opencv/blob/7e2bb63378dafb90063af40caff20c363c8c9eaf/modules/calib3d/src/ptsetreg.cpp#L185
-        # Workaround by to test on outliers: use "!= 1", instead of "== 0"
+        # Workaround to test on outliers: use "!= 1", instead of "== 0"
         print status.T
         inlier_idxs = np.where(status == 1)[0]
         print "Removed", allfeatures_nrm_left.shape[0] - inlier_idxs.shape[0], "outlier(s)."
@@ -438,8 +440,8 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
             test_point = P_left.dot(test_point)    # set the reference axis-system to the one of the left camera, note that are_points_in_front_of_left_camera is automatically True
             
             center_objp_triangl = linear_LS_triangulation(
-                    center_imgp_left.reshape(2, 1), np.eye(4), K_left, K_inv_left, distCoeffs_left,
-                    center_imgp_right.reshape(2, 1), P, K_right, K_inv_right, distCoeffs_right )
+                    center_imgp_left.reshape(2, 1), np.eye(4),
+                    center_imgp_right.reshape(2, 1), P )
             
             if (center_objp_triangl.T) .dot (test_point[0:3, 0:1]) < 0:
                 P[0:3, 3:4] *= -1    # do a baseline reversal
@@ -456,8 +458,8 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
             
             for i in range(4):    # check all 4 solutions
                 objp_triangl = linear_LS_triangulation(
-                        nonplanar_nrm_left.T, np.eye(4), K_left, K_inv_left, distCoeffs_left,
-                        nonplanar_nrm_right.T, P, K_right, K_inv_right, distCoeffs_right )
+                        nonplanar_nrm_left.T, np.eye(4),
+                        nonplanar_nrm_right.T, P )
                 center_of_mass = objp_triangl.sum(axis=1) / objp_triangl.shape[1]    # select the center of the triangulated cloudpoints
                 test_point[0:3, :] = center_of_mass.reshape(3, 1)
                 print "test_point:"
@@ -494,7 +496,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
                 cameraMatrix, distCoeffs,
                 [rvec_left, rvec_right],
                 [tvec_left, tvec_right],
-                [objp_orig] * 2, [planar_left_orig, planar_right_orig], boardSize )[1]
+                [objp_orig] * 2, [planar_left_orig, planar_right_orig] )[1]
         
         print "P_left_result"
         print P_left_result
@@ -504,7 +506,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
                 cameraMatrix, distCoeffs,
                 [cvh.Rodrigues(P_left[0:3, 0:3]), cvh.Rodrigues(P_right_result[0:3, 0:3])],
                 [P_left[0:3, 3], P_right_result[0:3, 3]],
-                [objp_orig] * 2, [planar_left_orig, planar_right_orig], boardSize )[1]
+                [objp_orig] * 2, [planar_left_orig, planar_right_orig] )[1]
     
     
     ### Triangulate
@@ -515,8 +517,8 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         # Do triangulation of all points
         # NOTICE: in a real case, we should only use not yet triangulated points that are in sight
         objp_result = linear_LS_triangulation(
-                allfeatures_nrm_left.T, P_left, K_left, K_inv_left, distCoeffs_left,
-                allfeatures_nrm_right.T, P_right, K_right, K_inv_right, distCoeffs_right )
+                allfeatures_nrm_left.T, P_left,
+                allfeatures_nrm_right.T, P_right )
     
     elif num_nonplanar > 0:
         # We already did the triangulation during the pose estimation, but we still need to backtransform them from the left camera axis-system
@@ -529,7 +531,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     print "=> error:", reprojection_error(
             cameraMatrix, distCoeffs, [rvec_left, rvec_right], [tvec_left, tvec_right],
             [objp_orig] * 2,
-            [planar_left_orig, planar_right_orig], boardSize )[1]
+            [planar_left_orig, planar_right_orig] )[1]
     
     print "objp_result of chessboard:"
     print objp_result.T[:num_planar, :]
@@ -542,7 +544,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         print "=> error:", reprojection_error(
                 cameraMatrix, distCoeffs, [rvec_left, rvec_right], [tvec_left, tvec_right],
                 [objp_result.T] * 2,
-                [allfeatures_left, allfeatures_right], boardSize )[1]
+                [allfeatures_left, allfeatures_right] )[1]
     
     
     ### Print total combined reprojection error
@@ -557,7 +559,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
                     [cvh.Rodrigues(P_left[0:3, 0:3]), cvh.Rodrigues(P_right_result[0:3, 0:3])],
                     [P_left[0:3, 3], P_right_result[0:3, 3]],
                     [objp_result.T] * 2,
-                    [allfeatures_left, allfeatures_right], boardSize )[1]
+                    [allfeatures_left, allfeatures_right] )[1]
     
     
     """
@@ -714,7 +716,64 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
             tvec_prev = tvec
 
 
-        
+def calibrate_relative_poses_interactive(image_sets, cameraMatrixs, distCoeffss, imageSizes, boardSizes, board_scales, board_rvecs, board_tvecs):
+    """
+    Make an estimate of the relative poses (as 4x4 projection matrices) between many cameras.
+    Base these relative poses to the first camera.
+    
+    Each camera should be looking at its own chessboard,
+    use different sizes of chessboards if a camera sees chessboard that are not associated with that camera.
+    'board_scales' scales the chessboard-units to world-units.
+    'board_rvecs' and 'board_tvecs' transform the rescaled local chessboard-coordinates to world-coordinates.
+    
+    The inverse of the reprojection error is used for weighting.
+    """
+    num_cams = len(image_sets)
+    num_images = len(image_sets[0])
+    reproj_error_max = 0
+    
+    # Preprocess object-points of the different boards
+    board_objps = []
+    for boardSize, board_scale, board_rvec, board_tvec in zip(
+            boardSizes, board_scales, board_rvecs, board_tvecs ):
+        objp = np.ones((np.prod(boardSize), 4))
+        objp[:, 0:3] = prepare_object_points(boardSize) * board_scale
+        objp = objp.dot(trfm.P_from_R_and_t(cvh.Rodrigues(board_rvec), np.array(board_tvec).reshape(3, 1))[0:3, :].T)
+        board_objps.append(objp)
+    
+    # Calculate all absolute poses
+    Ps = np.zeros((num_images, num_cams, 4, 4))
+    weights = np.zeros((num_images, 1, 1, 1))
+    for i, images in enumerate(zip(*image_sets)):
+        reproj_error = 0
+        for c, (image, cameraMatrix, distCoeffs, imageSize, boardSize, board_objp) in enumerate(zip(
+                images, cameraMatrixs, distCoeffss, imageSizes, boardSizes, board_objps )):
+            img = cv2.imread(image)
+            ret, corners = cvh.extractChessboardFeatures(img, boardSize)
+            if not ret:
+                print "Error: Image '%s' didn't contain a chessboard of size %s." % (image, boardSize)
+                return False, None
+            
+            # Draw and display the corners
+            cv2.drawChessboardCorners(
+                    img, boardSize, corners, ret )
+            cv2.imshow("img", img)
+            cv2.waitKey(100)
+            
+            ret, rvec, tvec = cv2.solvePnP(board_objp, corners, cameraMatrix, distCoeffs)
+            Ps[i, c, :, :] = trfm.P_from_R_and_t(cvh.Rodrigues(rvec), tvec)
+            reproj_error = max(reprojection_error(cameraMatrix, distCoeffs, [rvec], [tvec], [board_objp], [corners])[1], reproj_error)    # max: worst case
+        reproj_error_max = max(reproj_error, reproj_error_max)
+        weights[i] = 1. / reproj_error
+    
+    # Apply weighting on Ps, and rebase against first camera
+    Ps *= weights / weights.sum()
+    Ps = Ps.sum(axis=0)
+    Pref_inv = cvh.invert(Ps[0, :, :])    # use first cam as reference
+    return True, [P.dot(Pref_inv) for P in Ps], reproj_error_max
+
+
+
 def get_variable(name, func = lambda x: x):
     value = eval(name)
     value_inp = raw_input("%s [%s]: " % (name, repr(value)))
@@ -724,9 +783,9 @@ def get_variable(name, func = lambda x: x):
         globals()[name] = value
 
 def main():
-    global boardSize, filename_base_chessboards, filename_intrinsics, filename_distorted, filename_triangl_pose_est_left, filename_triangl_pose_est_right, filename_base_extrinsics, device_id
+    global boardSize, filename_base_chessboards, filename_intrinsics, filename_distorted, filename_triangl_pose_est_left, filename_triangl_pose_est_right, filename_base_extrinsics, filenames_extra_chessboards, filenames_extra_intrinsics, extra_boardSizes, extra_board_scales, extra_board_rvecs, extra_board_tvecs, device_id
     boardSize = (8, 6)
-    filename_base_chessboards = os.path.join("chessboards", "chessboard*.jpg")
+    filename_base_chessboards = os.path.join("chessboards", "chessboard*.jpg")    # calibration images of the base camera
     filename_intrinsics = "camera_intrinsics.txt"
     filename_distorted = os.path.join("chessboards", "chessboard07.jpg")    # a randomly chosen image
     #filename_triangl_pose_est_left = os.path.join("chessboards", "chessboard07.jpg")    # a randomly chosen image
@@ -734,6 +793,13 @@ def main():
     filename_triangl_pose_est_left = os.path.join("chessboards_and_nonplanar", "image-0001.jpeg")    # a randomly chosen image
     filename_triangl_pose_est_right = os.path.join("chessboards_and_nonplanar", "image-0056.jpeg")    # a randomly chosen image
     filename_base_extrinsics = os.path.join("chessboards_extrinsic", "chessboard")
+    filenames_extra_chessboards = (os.path.join("chessboards_front", "front-*.jpg"),    # sets of calibration images of extra cameras
+                                   os.path.join("chessboards_bottom", "bottom-*.jpg"))
+    filenames_extra_intrinsics = ("camera_intrinsics_front.txt", "camera_intrinsics_bottom.txt")    # intrinsics of extra cameras
+    extra_boardSizes = ((8, 6), (8, 6))
+    extra_board_scales = (1., 1.)
+    extra_board_rvecs = ((0., 0., 0.), (0., -pi/2, 0.))
+    extra_board_tvecs = ((0., 0., 0.), (6., 0., (1200.-193.)/27.6+1.))
     device_id = 1    # webcam
 
     nonplanar_left = nonplanar_right = np.zeros((0, 2))
@@ -748,6 +814,7 @@ def main():
         6: reprojection_error
         7: triangl_pose_est_interactive
         8: realtime_pose_estimation (recommended)
+        9: calibrate_relative_poses_interactive
         q: quit
     
     Info: Sometimes you will be prompted: 'someVariable [defaultValue]: ',
@@ -810,7 +877,7 @@ def main():
         
         elif inp == "6":
             mean_error, square_error = \
-                    reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, imagePoints, boardSize)
+                    reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, imagePoints)
             print "mean absolute error:", mean_error
             print "square error:", square_error
         
@@ -838,6 +905,28 @@ def main():
             realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, distCoeffs, objp, boardSize)
             
             cv2.destroyAllWindows()
+        
+        elif inp == "9":
+            print calibrate_relative_poses_interactive.__doc__
+            
+            get_variable("filenames_extra_chessboards", lambda x: eval("(%s)" % x))
+            from glob import glob
+            image_sets = [sorted(glob(images)) for images in filenames_extra_chessboards]
+            get_variable("filenames_extra_intrinsics", lambda x: eval("(%s)" % x))
+            cameraMatrixs, distCoeffss, imageSizes = zip(*map(load_camera_intrinsics, filenames_extra_intrinsics))
+            get_variable("extra_boardSizes", lambda x: eval("(%s)" % x))
+            get_variable("extra_board_scales", lambda x: eval("(%s)" % x))
+            get_variable("extra_board_rvecs", lambda x: eval("(%s)" % x))
+            get_variable("extra_board_tvecs", lambda x: eval("(%s)" % x))
+            print    # add new-line
+            
+            ret, Ps, reproj_error_max = \
+                    calibrate_relative_poses_interactive(image_sets, cameraMatrixs, distCoeffss, imageSizes,
+                                                         extra_boardSizes, extra_board_scales, extra_board_rvecs, extra_board_tvecs)
+            if ret:
+                print "Ps:"
+                for P in Ps: print P
+                print "reproj_error_max:", reproj_error_max
 
 if __name__ == "__main__":
     main()

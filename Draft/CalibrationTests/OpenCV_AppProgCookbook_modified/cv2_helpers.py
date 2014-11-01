@@ -101,15 +101,14 @@ def wireframe3DGeometry(img, verts, edges, col,
     # Calculate image-projections
     verts_imgp, jacob = cv2.projectPoints(
             verts, rvec, tvec, cameraMatrix, distCoeffs )
-    verts_imgp = verts_imgp.reshape(-1, 2)
     rounding = np.vectorize(lambda x: int(round(x)))
-    verts_imgp_rounded = rounding(verts_imgp) # round to nearest int
+    verts_imgp = rounding(verts_imgp.reshape(-1, 2)) # round to nearest int
     
     # Draw edges and vertices, in that order to prioritize vertices' appearance
     for edge in edges:
-        v1, v2 = verts_imgp_rounded[edge]
+        v1, v2 = verts_imgp[edge]
         line(img, v1, v2, col, thickness=2, lineType=cv2.CV_AA)
-    for vert in verts_imgp_rounded:
+    for vert in verts_imgp:
         circle(img, vert, 4, rgb(0,0,0), thickness=-1)    # filled circle, radius 4
         circle(img, vert, 5, col, thickness=2)    # circle circumference, radius 5
     
