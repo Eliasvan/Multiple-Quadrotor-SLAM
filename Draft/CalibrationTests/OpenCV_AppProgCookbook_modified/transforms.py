@@ -122,3 +122,41 @@ def P_from_R_and_t(R, t):
     P[0:3, 3:4] = t
     
     return P
+
+def P_inv(P):
+    """
+    Return the inverse of a 4x4 P matrix (projection matrix).
+    
+    Only use if higher accuracy is needed, it's 4 times slower than cv2.invert(P)[0].
+    """
+    
+    R = LA.inv(P[0:3, 0:3])
+    t = -R.dot(P[0:3, 3:4])
+    
+    return P_from_R_and_t(R, t)
+
+def project_points(points, P, K):
+    """
+    Return the 2D projections of 3D points array via 4x4 P camera projection matrix using 3x3 K camera intrinsics matrix,
+    additionally return a corresponding status vector: 1 if point is in front of camera, otherwise 0.
+    """
+    points_nrm = np.empty((len(points), 4))
+    points_nrm[:, 0:3] = points
+    points_nrm[:, 3].fill(1)
+
+    points_proj = points_nrm .dot (P[0:3, :].T) .dot (K.T)
+    points_proj[:, 0:2] /= points_proj[:, 2:3]
+    
+    return np.rint(points_proj[:, 0:2]).astype(int), (points_proj[:, 2] > 0)
+
+def projection_depth(points, P):
+    """
+    Return the (Z) depth of the projections of 3D points array via 4x4 P camera projection matrix.
+    """
+    points_nrm = np.empty((len(points), 4))
+    points_nrm[:, 0:3] = points
+    points_nrm[:, 3].fill(1)
+
+    points_depth = points_nrm .dot (P[2:3, :].T)
+
+    return points_depth.reshape(-1)

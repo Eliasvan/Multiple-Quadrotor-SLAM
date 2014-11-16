@@ -463,7 +463,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
                 center_of_mass = objp_triangl.sum(axis=1) / objp_triangl.shape[1]    # select the center of the triangulated cloudpoints
                 test_point[0:3, :] = center_of_mass.reshape(3, 1)
                 print "test_point:"
-                print cvh.invert(P_left) .dot (test_point)
+                print trfm.P_inv(P_left) .dot (test_point)
                 
                 if np.eye(3, 4).dot(test_point)[2, 0] > 0 and P[0:3, :].dot(test_point)[2, 0] > 0:    # are_points_in_front_of_cameras is True
                     break
@@ -483,7 +483,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         if not (are_points_in_front_of_left_camera and are_points_in_front_of_right_camera):
             print "No valid solution found!"
         
-        P_left_result = cvh.invert(P).dot(P_right)
+        P_left_result = trfm.P_inv(P).dot(P_right)
         P_right_result = P.dot(P_left)
         
         print "P_left"
@@ -522,7 +522,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     
     elif num_nonplanar > 0:
         # We already did the triangulation during the pose estimation, but we still need to backtransform them from the left camera axis-system
-        objp_result = cvh.invert(P_left) .dot (np.concatenate((objp_triangl, np.ones((1, objp_triangl.shape[1])))))
+        objp_result = trfm.P_inv(P_left) .dot (np.concatenate((objp_triangl, np.ones((1, objp_triangl.shape[1])))))
         objp_result = objp_result[0:3, :]
         print objp_triangl.T
     
@@ -655,7 +655,7 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
             imgp_reproj, jacob = cv2.projectPoints(
                     axis_system_objp, rvec, tvec, cameraMatrix, distCoeffs )
             rounding = np.vectorize(lambda x: int(round(x)))
-            origin, xAxis, yAxis, zAxis = rounding(imgp_reproj.reshape(-1, 2)) # round to nearest int
+            origin, xAxis, yAxis, zAxis = np.rint(imgp_reproj.reshape(-1, 2)).astype(int)    # round to nearest int
             
             # OpenCV's 'rvec' and 'tvec' seem to be defined as follows:
             #   'rvec': rotation transformation: transforms points from "WORLD axis-system -> CAMERA axis-system"
@@ -769,7 +769,7 @@ def calibrate_relative_poses_interactive(image_sets, cameraMatrixs, distCoeffss,
     # Apply weighting on Ps, and rebase against first camera
     Ps *= weights / weights.sum()
     Ps = Ps.sum(axis=0)
-    Pref_inv = cvh.invert(Ps[0, :, :])    # use first cam as reference
+    Pref_inv = trfm.P_inv(Ps[0, :, :])    # use first cam as reference
     return True, [P.dot(Pref_inv) for P in Ps], reproj_error_max
 
 
