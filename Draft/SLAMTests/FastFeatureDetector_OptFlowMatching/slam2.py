@@ -405,20 +405,24 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
     all_idxs_tmp_old = np.array(all_idxs_tmp)
     
     # Calculate OF (Optical Flow), and filter outliers based on OF error
-    new_imgp, status_OF, err_OF = cv2.calcOpticalFlowPyrLK(prev_img_gray, new_img_gray, prev_imgp)
+    new_imgp, status_OF, err_OF = cv2.calcOpticalFlowPyrLK(prev_img_gray, new_img_gray, prev_imgp)    # WARNING: OpenCV can output corrupted values in 'status_OF': "RuntimeWarning: invalid value encountered in less"
     new_to_prev_idxs = np.where(np.logical_and((status_OF.reshape(-1) == 1), (err_OF.reshape(-1) < max_OF_error)))[0]
     
     # If there is too much OF error in the entire image, simply reject the frame
     lost_tracks_ratio = (len(prev_imgp) - len(new_to_prev_idxs)) / float(len(prev_imgp))
     print "# points lost because of excessive OF error / # points before: ", len(prev_imgp) - len(new_to_prev_idxs), "/", len(prev_imgp), "=", lost_tracks_ratio
     if lost_tracks_ratio > max_lost_tracks_ratio:    # reject frame
+        print "REJECTED: I lost track of all points!\n"
         return False, base_imgp, prev_imgp, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr, base_img
     
     # Save matches by idxs
     preserve_idxs = set(all_idxs_tmp[new_to_prev_idxs])
-    new_imgp = new_imgp[new_to_prev_idxs]
     triangl_idxs, nontriangl_idxs, all_idxs_tmp = idxs_update_by_idxs(
             preserve_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
+    if not triangl_idxs:
+        print "REJECTED: I lost track of all already-triangulated points, so we can't do solvePnP() anymore...\n"
+        return False, base_imgp, prev_imgp, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr, base_img
+    new_imgp = new_imgp[new_to_prev_idxs]
     #cv2.cornerSubPix(    # TODO: activate this secret weapon    <-- hmm, actually seems to make it worse
                 #new_img_gray, new_imgp,
                 #(corner_min_dist,corner_min_dist),    # window
@@ -436,10 +440,13 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
     
     # ... if ratio of 'inliers' vs input is too low, reject frame, ...
     if inliers == None:    # inliers is empty => reject frame
+        print "REJECTED: No inliers based on solvePnP()!\n"
         return False, base_imgp, prev_imgp, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr, base_img
+    inliers = inliers.reshape(-1)
     solvePnP_outlier_ratio = (len(triangl_idxs) - len(inliers)) / float(len(triangl_idxs))
     print "solvePnP_outlier_ratio:", solvePnP_outlier_ratio
     if solvePnP_outlier_ratio > max_solvePnP_outlier_ratio:    # reject frame
+        print "REJECTED: Not enough inliers based on solvePnP()!\n"
         return False, base_imgp, prev_imgp, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr, base_img
     
     # <DEBUG: visualize reprojection error>    TODO: remove
@@ -454,7 +461,7 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
     # </DEBUG>
     
     # ... then do solvePnP() on inliers, to get the current frame's pose estimation, ...
-    triangl_idxs_array = triangl_idxs_array[inliers.reshape(-1)]    # select inliers among all already-triangulated point-indices
+    triangl_idxs_array = triangl_idxs_array[inliers]    # select inliers among all already-triangulated point-indices
     filtered_triangl_imgp, filtered_triangl_objp = filtered_triangl_imgp[inliers], filtered_triangl_objp[inliers]
     preserve_idxs = set(triangl_idxs_array) | nontriangl_idxs
     new_imgp = idxs_get_new_imgp_by_idxs(preserve_idxs, new_imgp, all_idxs_tmp)
@@ -464,9 +471,10 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             filtered_triangl_objp, filtered_triangl_imgp, cameraMatrix, distCoeffs )
     
     # .. finally do a check on the average reprojection error, and reject frame if too high.
-    reproj_error, imgp_reproj = reprojection_error(filtered_triangl_objp.reshape(-1, 3), filtered_triangl_imgp.reshape(-1, 2), rvec, tvec, cameraMatrix, distCoeffs)
+    reproj_error, imgp_reproj = reprojection_error(filtered_triangl_objp, filtered_triangl_imgp, rvec, tvec, cameraMatrix, distCoeffs)
     print "solvePnP refined reproj_error:", reproj_error
     if reproj_error > max_solvePnP_reproj_error:    # reject frame
+        print "REJECTED: Too high reprojection error based on pose estimate of solvePnP()!\n"
         return False, base_imgp, prev_imgp, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr, base_img
     
     # <DEBUG: verify poses by reprojection error>    TODO: remove
@@ -512,53 +520,64 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             # </DEBUG>
             
             # ... then do solvePnPRansac() on all (visible) already- and just- triangulated points to eliminate outliers and ...
-            objp_to_check = np.concatenate((filtered_triangl_objp.reshape(-1, 3), objp_done))    # collect all desired object-points
+            objp_to_check = np.concatenate((filtered_triangl_objp, objp_done))    # collect all desired object-points
             imgp_to_check0 = np.concatenate((base_imgp[triangl_idxs_array], imgp0))    # collect corresponding image-points of last keyframe
-            imgp_to_check1 = np.concatenate((filtered_triangl_imgp.reshape(-1, 2), imgp1))    # collect corresponding image-points of current frame
+            imgp_to_check1 = np.concatenate((filtered_triangl_imgp, imgp1))    # collect corresponding image-points of current frame
             rvec_, tvec_, inliers0 = cv2.solvePnPRansac(    # perform solvePnPRansac() on last keyframe, forcing reproj_error to stay below the threshold, also use extrinsic guess
                     objp_to_check, imgp_to_check0, cameraMatrix, distCoeffs, np.array(rvec_keyfr), np.array(tvec_keyfr), useExtrinsicGuess=True, reprojectionError=max_2nd_solvePnP_reproj_error )
-            if inliers0 == None: inliers0 = np.array((0, 1))
+            if inliers0 == None: inliers0 = np.zeros((0, 1))
             print "total triangl_reproj_error 0:", reprojection_error(objp_to_check, imgp_to_check0, rvec_, tvec_, cameraMatrix, distCoeffs)[0]    # TODO: remove
             rvec_, tvec_, inliers1 = cv2.solvePnPRansac(    # perform solvePnPRansac() on current frame, forcing reproj_error to stay below the threshold, also use extrinsic guess
                     objp_to_check, imgp_to_check1, cameraMatrix, distCoeffs, np.array(rvec), np.array(tvec), useExtrinsicGuess=True, reprojectionError=max_2nd_solvePnP_reproj_error )
-            if inliers1 == None: inliers1 = np.array((0, 1))
+            if inliers1 == None: inliers1 = np.zeros((0, 1))
             print "total triangl_reproj_error 1:", reprojection_error(objp_to_check, imgp_to_check1, rvec_, tvec_, cameraMatrix, distCoeffs)[0]    # TODO: remove
             
-            # ... define 'inliers_objp_done' as the intersection of inliers of these (on last keyframe and on current frame) solvePnPRansac() results;
-            #     only preserve union of these 'inliers_objp_done' and already-triangulated-points (and call it 'inliers'), ...
+            # ... define 'inliers_objp_done' as the intersection of inliers of these (on last keyframe and on current frame) solvePnPRansac() results; ...
             inliers = set(inliers0.reshape(-1)) & set(inliers1.reshape(-1))    # make intersection of both groups of inliers
             inliers_objp_done = np.array(sorted(inliers & set(range(len(triangl_idxs), len(objp_to_check)))), dtype=int) - len(triangl_idxs)    # only include just-triangulated points
-            inliers |= set(range(len(triangl_idxs)))    # force already-triangulated points to be reported as inliers
-            inliers = np.array(sorted(inliers))
             print "# triangl outliers eliminated:", len(objp_done) - len(inliers_objp_done), "/", len(objp_done)
             
-            # {... if ratio of 'inliers_objp_done' vs input is too low, reject frame (and undo rebasing of indices), ...} (TODO)
+            # ... if ratio of 'inliers_objp_done' vs input is too low, reject the newly triangulated points, ...
+            solvePnP_outlier_ratio = (len(objp_done) - len(inliers_objp_done)) / float(len(objp_done))
+            print "2nd solvePnP_outlier_ratio:", solvePnP_outlier_ratio
+            if solvePnP_outlier_ratio >= max_2nd_solvePnP_outlier_ratio:
+                #inliers_objp_done = np.zeros(0, dtype=int)    # uncomment if needed in future
+                preserve_idxs = triangl_idxs    # only preserve already triangulated points
+                objp_done = np.zeros((0, 3), dtype=np.float32)    # reject newly triangulated points
+                print "rejected all newly triangulated points."
             
-            # ... then do solvePnP() on all preserved points ('inliers') to refine pose estimation, ...
-            preserve_idxs = set(np.concatenate((triangl_idxs_array, nontriangl_idxs_array))[inliers])
-            filtered_triangl_objp, filtered_triangl_imgp = objp_to_check[inliers], imgp_to_check1[inliers]
-            ret, rvec, tvec = cv2.solvePnP(    # perform solvePnP(), we start from the initial pose estimation
-                    filtered_triangl_objp, filtered_triangl_imgp, cameraMatrix, distCoeffs, rvec, tvec, useExtrinsicGuess=True )
-            print "total triangl_reproj_error 1 refined:", reprojection_error(filtered_triangl_objp, filtered_triangl_imgp, rvec, tvec, cameraMatrix, distCoeffs)[0]    # TODO: remove
-            #objp_done = objp_done[inliers_objp_done]    # alternative: don't retriangulate, only eliminate outliers
-            
-            # ... then do re-triangulation of 'inliers_objp_done' using refined pose estimation.
-            imgpnrm0, imgpnrm1 = imgpnrm0[inliers_objp_done], imgpnrm1[inliers_objp_done]
-            objp_done = linear_LS_triangulation(    # triangulate
-                    imgpnrm0.T, trfm.P_from_R_and_t(cvh.Rodrigues(rvec_keyfr), tvec_keyfr),    # data from last keyframe
-                    imgpnrm1.T, trfm.P_from_R_and_t(cvh.Rodrigues(rvec), tvec) )               # data from current frame
-            objp_done = objp_done.T
-            objp_groups_done = np.empty((len(objp_done)), dtype=np.int); objp_groups_done.fill(group_id)
-            
-            # <DEBUG: check reprojection error of the new freshly (refined) triangulated points, based on both pose estimates of keyframe and current cam>    TODO: remove
-            print "triangl_reproj_error 0 refined:", reprojection_error(objp_done, imgp0[inliers_objp_done], rvec_keyfr, tvec_keyfr, cameraMatrix, distCoeffs)[0]
-            print "triangl_reproj_error 1 refined:", reprojection_error(objp_done, imgp1[inliers_objp_done], rvec, tvec, cameraMatrix, distCoeffs)[0]
-            # </DEBUG>
+            # ... otherwise perform pose refinement with the newly triangulated 3D points, and re-triangulate:
+            else:
+                    
+                # Only preserve union of these 'inliers_objp_done' and already-triangulated-points (and call it 'inliers'), ...
+                inliers |= set(range(len(triangl_idxs)))    # force already-triangulated points to be reported as inliers
+                inliers = np.array(sorted(inliers))
+                preserve_idxs = set(np.concatenate((triangl_idxs_array, nontriangl_idxs_array))[inliers])
+                filtered_triangl_imgp, filtered_triangl_objp = imgp_to_check1[inliers], objp_to_check[inliers]
+                
+                # ... then do solvePnP() on all preserved points ('inliers') to refine pose estimation, ...
+                ret, rvec, tvec = cv2.solvePnP(    # perform solvePnP(), we start from the initial pose estimation
+                        filtered_triangl_objp, filtered_triangl_imgp, cameraMatrix, distCoeffs, rvec, tvec, useExtrinsicGuess=True )
+                print "total triangl_reproj_error 1 refined:", reprojection_error(filtered_triangl_objp, filtered_triangl_imgp, rvec, tvec, cameraMatrix, distCoeffs)[0]    # TODO: remove
+                #objp_done = objp_done[inliers_objp_done]    # alternative: don't re-triangulate, only eliminate outliers
+                
+                # ... then do re-triangulation of 'inliers_objp_done' using refined pose estimation.
+                imgpnrm0, imgpnrm1 = imgpnrm0[inliers_objp_done], imgpnrm1[inliers_objp_done]
+                objp_done = linear_LS_triangulation(    # triangulate
+                        imgpnrm0.T, trfm.P_from_R_and_t(cvh.Rodrigues(rvec_keyfr), tvec_keyfr),    # data from last keyframe
+                        imgpnrm1.T, trfm.P_from_R_and_t(cvh.Rodrigues(rvec), tvec) )               # data from current frame
+                objp_done = objp_done.T
+                
+                # <DEBUG: check reprojection error of the new freshly (refined) triangulated points, based on both pose estimates of keyframe and current cam>    TODO: remove
+                print "triangl_reproj_error 0 refined:", reprojection_error(objp_done, imgp0[inliers_objp_done], rvec_keyfr, tvec_keyfr, cameraMatrix, distCoeffs)[0]
+                print "triangl_reproj_error 1 refined:", reprojection_error(objp_done, imgp1[inliers_objp_done], rvec, tvec, cameraMatrix, distCoeffs)[0]
+                # </DEBUG>
             
             # Update image-points and indices, and store the newly triangulated object-points and assign them the current group id
             new_imgp = filtered_triangl_imgp
             triangl_idxs, nontriangl_idxs, all_idxs_tmp = idxs_update_by_idxs(
                     preserve_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
+            objp_groups_done = np.empty((len(objp_done)), dtype=int); objp_groups_done.fill(group_id)    # assign to current 'group_id'
             (objp, objp_groups), imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs = idxs_add_objp(
                     (objp_done, objp_groups_done), preserve_idxs - triangl_idxs, (objp, objp_groups), imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
             
@@ -613,7 +632,7 @@ def main():
     global target_amount_keypoints, corner_quality_level, corner_min_dist
     global homography_condition_threshold
     global max_solvePnP_reproj_error, max_2nd_solvePnP_reproj_error, max_fundMat_reproj_error
-    global max_solvePnP_outlier_ratio, solvePnP_use_extrinsic_guess
+    global max_solvePnP_outlier_ratio, max_2nd_solvePnP_outlier_ratio, solvePnP_use_extrinsic_guess
     
     # Initially known data
     boardSize = (8, 6)
@@ -651,10 +670,11 @@ def main():
     homography_condition_threshold = 500    # defined as ratio between max and min singular values
     # reprojection error
     max_solvePnP_reproj_error = 4.#0.5    # TODO: revert to a lower number
-    max_2nd_solvePnP_reproj_error = max_solvePnP_reproj_error / 2    # be more strict in a 2nd iteration
+    max_2nd_solvePnP_reproj_error = max_solvePnP_reproj_error / 2    # be more strict in a 2nd iteration, used after 1st pass of triangulation
     max_fundMat_reproj_error = 2.0
     # solvePnP
     max_solvePnP_outlier_ratio = 0.3
+    max_2nd_solvePnP_outlier_ratio = 1.    # used in 2nd iteration, after 1st pass of triangulation
     solvePnP_use_extrinsic_guess = False    # TODO: set to True and see whether the 3D results are better
     
     
