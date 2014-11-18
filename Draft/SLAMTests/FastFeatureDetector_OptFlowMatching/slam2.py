@@ -419,8 +419,8 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
     preserve_idxs = set(all_idxs_tmp[new_to_prev_idxs])
     triangl_idxs, nontriangl_idxs, all_idxs_tmp = idxs_update_by_idxs(
             preserve_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
-    if not triangl_idxs:
-        print "REJECTED: I lost track of all already-triangulated points, so we can't do solvePnP() anymore...\n"
+    if len(triangl_idxs) < 8:    # solvePnP uses 8-point algorithm
+        print "REJECTED: I lost track of too many already-triangulated points, so we can't do solvePnP() anymore...\n"
         return False, base_imgp, prev_imgp, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr, base_img
     new_imgp = new_imgp[new_to_prev_idxs]
     #cv2.cornerSubPix(    # TODO: activate this secret weapon    <-- hmm, actually seems to make it worse
@@ -445,8 +445,11 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
     inliers = inliers.reshape(-1)
     solvePnP_outlier_ratio = (len(triangl_idxs) - len(inliers)) / float(len(triangl_idxs))
     print "solvePnP_outlier_ratio:", solvePnP_outlier_ratio
-    if solvePnP_outlier_ratio > max_solvePnP_outlier_ratio:    # reject frame
-        print "REJECTED: Not enough inliers based on solvePnP()!\n"
+    if solvePnP_outlier_ratio > max_solvePnP_outlier_ratio or len(inliers) < 8:    # reject frame
+        if solvePnP_outlier_ratio > max_solvePnP_outlier_ratio:
+            print "REJECTED: Not enough inliers (ratio) based on solvePnP()!\n"
+        else:
+            print "REJECTED: Not enough inliers (absolute) based on solvePnP() to perform (non-RANSAC) solvePnP()!\n"
         return False, base_imgp, prev_imgp, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr, base_img
     
     # <DEBUG: visualize reprojection error>    TODO: remove
@@ -548,7 +551,7 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             
             # ... otherwise perform pose refinement with the newly triangulated 3D points, and re-triangulate:
             else:
-                    
+                
                 # Only preserve union of these 'inliers_objp_done' and already-triangulated-points (and call it 'inliers'), ...
                 inliers |= set(range(len(triangl_idxs)))    # force already-triangulated points to be reported as inliers
                 inliers = np.array(sorted(inliers))
