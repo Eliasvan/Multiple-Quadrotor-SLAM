@@ -242,7 +242,7 @@ class Composite3DPainter:
         """
         Draw 3D composite view.
         Navigate using the following keys:
-            LEFT/RIGHT    UP/DOWN    PAGEUP/PAGEDOWN
+            LEFT/RIGHT    UP/DOWN    PAGEUP/PAGEDOWN    HOME/END
         
         'status' can have the following values:
             0: bad frame
@@ -321,6 +321,9 @@ class Composite3DPainter:
                 delta_t_view[1] = 2 * (key == 0x52) - 1    # UP -> increase cam Y pos
             elif key in (0x55, 0x56):    # PAGEUP/PAGEDOWN key
                 delta_t_view[2] = 2 * (key == 0x55) - 1    # PAGEUP -> increase cam Z pos
+            elif key in (0x50, 0x57):    # HOME/END key
+                delta_z_rot = 2 * (key == 0x50) - 1    # HOME -> counter-clockwise rotate around cam Z axis
+                self.P[0:3, 0:4] = cvh.Rodrigues((0, 0, delta_z_rot * pi/36)).dot(self.P[0:3, 0:4])    # by steps of 5 degrees
             else:
                 break
             self.P[0:3, 3] += delta_t_view * 0.3
@@ -436,7 +439,7 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
     filtered_triangl_objp = objp[imgp_to_objp_idxs[triangl_idxs_array]]    # collect corresponding object-points
     print "Doing solvePnP() on", filtered_triangl_objp.shape[0], "points"
     rvec_, tvec_, inliers = cv2.solvePnPRansac(    # perform solvePnPRansac() to identify outliers, force to obey max_solvePnP_outlier_ratio
-            filtered_triangl_objp, filtered_triangl_imgp, cameraMatrix, distCoeffs, minInliersCount=int(ceil((1 - max_solvePnP_outlier_ratio) * len(triangl_idxs))) )
+            filtered_triangl_objp, filtered_triangl_imgp, cameraMatrix, distCoeffs, minInliersCount=int(ceil((1 - max_solvePnP_outlier_ratio) * len(triangl_idxs))), reprojectionError=max_solvePnP_reproj_error )
     
     # ... if ratio of 'inliers' vs input is too low, reject frame, ...
     if inliers == None:    # inliers is empty => reject frame
@@ -641,20 +644,20 @@ def main():
     boardSize = (8, 6)
     color_palette, color_palette_size = prepare_color_palette(2, 3, 4)    # used to identify 3D point group ids
     
-    cameraMatrix, distCoeffs, imageSize = \
-            load_camera_intrinsics("camera_intrinsics.txt")
     #cameraMatrix, distCoeffs, imageSize = \
-            #load_camera_intrinsics("camera_intrinsics_front.txt")
+            #load_camera_intrinsics("camera_intrinsics.txt")
+    cameraMatrix, distCoeffs, imageSize = \
+            load_camera_intrinsics("camera_intrinsics_front.txt")
     
     # Select working (or 'testing') set
     from glob import glob
-    images = sorted(glob(os.path.join("captures2", "*.jpeg")))
-    #images = sorted(glob(os.path.join("drone0", "*.jpg")))
+    #images = sorted(glob(os.path.join("captures2", "*.jpeg")))
+    images = sorted(glob(os.path.join("drone0", "*.jpg")))
     
     # Setup some visualization helpers
     composite2D_painter = Composite2DPainter("composite 2D", imageSize)
     composite3D_painter = Composite3DPainter(
-            "composite 3D", trfm.P_from_R_and_t(cvh.Rodrigues((pi, 0., 0.)), np.array([[0., 3., 23.]]).T), (1280, 720) )
+            "composite 3D", trfm.P_from_R_and_t(cvh.Rodrigues((pi, 0., 0.)), np.array([[0., 0., 40.]]).T), (1280, 720) )
     
     
     ### Tweaking parameters ###
@@ -745,7 +748,7 @@ def main():
                              cameraMatrix, distCoeffs, triangl_idxs, nontriangl_idxs, all_idxs_tmp, new_imgp, imgp_to_objp_idxs, objp, objp_groups, group_id, color_palette, color_palette_size)
     
     # Draw 3D points info of all frames
-    print "Drawing composite 3D image    (keys: LEFT/RIGHT/UP/DOWN/PAGEUP/PAGEDOWN)"
+    print "Drawing composite 3D image    (keys: LEFT/RIGHT/UP/DOWN/PAGEUP/PAGEDOWN/HOME/END)"
     composite3D_painter.draw(rvec, tvec, ret,
                              triangl_idxs, imgp_to_objp_idxs, objp, objp_groups, color_palette, color_palette_size)
     
