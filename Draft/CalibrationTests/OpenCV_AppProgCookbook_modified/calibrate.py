@@ -293,6 +293,9 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
                                 ]
             nonplanar_left += map(tuple, out_left[valid_match_idxs])    # concatenate
             nonplanar_right += map(tuple, out_right[valid_match_idxs])    # concatenate
+        
+        #nonplanar_left = np.rint(nonplanar_left).astype(int)
+        #nonplanar_right = np.rint(nonplanar_right).astype(int)
     
     
     ### User can manually create matches between non-planar objects
