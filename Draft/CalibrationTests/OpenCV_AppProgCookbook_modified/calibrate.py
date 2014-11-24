@@ -123,10 +123,8 @@ def reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, ima
     return mean_error, square_error
 
 
-# Initialize consts or tmp vars to be used in linear_LS_triangulation()
+# Initialize consts to be used in linear_LS_triangulation()
 linear_LS_triangulation_c = -np.eye(2, 3)
-linear_LS_triangulation_A = np.zeros((4, 3))
-linear_LS_triangulation_b = np.zeros((4, 1))
 
 def linear_LS_triangulation(u, P, u1, P1):
     """
@@ -138,33 +136,34 @@ def linear_LS_triangulation(u, P, u1, P1):
     
     u and u1 are matrices: amount of points equals #columns and should be equal for u and u1.
     """
-    global linear_LS_triangulation_A, linear_LS_triangulation_b
+    A = np.zeros((4, 3))
+    b = np.zeros((4, 1))
     
     # Create array of triangulated points
-    x = np.zeros((3, u.shape[1]))
+    x = np.zeros((3, len(u)))
     
     # Initialize C matrices
     C = np.array(linear_LS_triangulation_c)
     C1 = np.array(linear_LS_triangulation_c)
     
-    for i in range(u.shape[1]):
+    for i in range(len(u)):
         # Build C matrices, to visualize calculation structure
-        C[:, 2] = u[:, i]
-        C1[:, 2] = u1[:, i]
+        C[:, 2] = u[i, :]
+        C1[:, 2] = u1[i, :]
         
         # Build A matrix
-        linear_LS_triangulation_A[0:2, :] = C.dot(P[0:3, 0:3])    # C * R
-        linear_LS_triangulation_A[2:4, :] = C1.dot(P1[0:3, 0:3])    # C1 * R1
+        A[0:2, :] = C.dot(P[0:3, 0:3])    # C * R
+        A[2:4, :] = C1.dot(P1[0:3, 0:3])    # C1 * R1
         
         # Build b vector
-        linear_LS_triangulation_b[0:2, :] = C.dot(P[0:3, 3:4])    # C * t
-        linear_LS_triangulation_b[2:4, :] = C1.dot(P1[0:3, 3:4])    # C1 * t1
-        linear_LS_triangulation_b *= -1
+        b[0:2, :] = C.dot(P[0:3, 3:4])    # C * t
+        b[2:4, :] = C1.dot(P1[0:3, 3:4])    # C1 * t1
+        b *= -1
         
         # Solve for x vector
-        cv2.solve(linear_LS_triangulation_A, linear_LS_triangulation_b, x[:, i:i+1], cv2.DECOMP_SVD)
+        cv2.solve(A, b, x[:, i:i+1], cv2.DECOMP_SVD)
     
-    return x
+    return x.T
 
 def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, imageSize, objp, boardSize, nonplanar_left, nonplanar_right):
     """ (TODO: remove debug-prints)
@@ -443,10 +442,10 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
             test_point = P_left.dot(test_point)    # set the reference axis-system to the one of the left camera, note that are_points_in_front_of_left_camera is automatically True
             
             center_objp_triangl = linear_LS_triangulation(
-                    center_imgp_left.reshape(2, 1), np.eye(4),
-                    center_imgp_right.reshape(2, 1), P )
+                    center_imgp_left.reshape(1, 2), np.eye(4),
+                    center_imgp_right.reshape(1, 2), P )
             
-            if (center_objp_triangl.T) .dot (test_point[0:3, 0:1]) < 0:
+            if (center_objp_triangl) .dot (test_point[0:3, 0:1]) < 0:
                 P[0:3, 3:4] *= -1    # do a baseline reversal
                 print P, "fixed triangulation inversion"
             
@@ -461,9 +460,9 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
             
             for i in range(4):    # check all 4 solutions
                 objp_triangl = linear_LS_triangulation(
-                        nonplanar_nrm_left.T, np.eye(4),
-                        nonplanar_nrm_right.T, P )
-                center_of_mass = objp_triangl.sum(axis=1) / objp_triangl.shape[1]    # select the center of the triangulated cloudpoints
+                        nonplanar_nrm_left, np.eye(4),
+                        nonplanar_nrm_right, P )
+                center_of_mass = objp_triangl.sum(axis=0) / len(objp_triangl)    # select the center of the triangulated cloudpoints
                 test_point[0:3, :] = center_of_mass.reshape(3, 1)
                 print "test_point:"
                 print trfm.P_inv(P_left) .dot (test_point)
@@ -514,20 +513,20 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     
     ### Triangulate
     
-    objp_result = np.zeros((3, 0))
+    objp_result = np.zeros((0, 3))
     
     if has_prev_triangl_points:
         # Do triangulation of all points
         # NOTICE: in a real case, we should only use not yet triangulated points that are in sight
         objp_result = linear_LS_triangulation(
-                allfeatures_nrm_left.T, P_left,
-                allfeatures_nrm_right.T, P_right )
+                allfeatures_nrm_left, P_left,
+                allfeatures_nrm_right, P_right )
     
     elif num_nonplanar > 0:
         # We already did the triangulation during the pose estimation, but we still need to backtransform them from the left camera axis-system
-        objp_result = trfm.P_inv(P_left) .dot (np.concatenate((objp_triangl, np.ones((1, objp_triangl.shape[1])))))
-        objp_result = objp_result[0:3, :]
-        print objp_triangl.T
+        objp_result = trfm.P_inv(P_left) .dot (np.concatenate((objp_triangl.T, np.ones((1, len(objp_triangl))))))
+        objp_result = objp_result[0:3, :].T
+        print objp_triangl
     
     print "objp:"
     print objp
@@ -537,16 +536,16 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
             [planar_left_orig, planar_right_orig] )[1]
     
     print "objp_result of chessboard:"
-    print objp_result.T[:num_planar, :]
+    print objp_result[:num_planar, :]
     if has_nonplanar:
         print "objp_result of non-planar geometry:"
-        print objp_result.T[num_planar:, :]
+        print objp_result[num_planar:, :]
     if num_planar + num_nonplanar == 0:
         print "=> error: undefined"
     else:
         print "=> error:", reprojection_error(
                 cameraMatrix, distCoeffs, [rvec_left, rvec_right], [tvec_left, tvec_right],
-                [objp_result.T] * 2,
+                [objp_result] * 2,
                 [allfeatures_left, allfeatures_right] )[1]
     
     
@@ -561,7 +560,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
                     cameraMatrix, distCoeffs,
                     [cvh.Rodrigues(P_left[0:3, 0:3]), cvh.Rodrigues(P_right_result[0:3, 0:3])],
                     [P_left[0:3, 3], P_right_result[0:3, 3]],
-                    [objp_result.T] * 2,
+                    [objp_result] * 2,
                     [allfeatures_left, allfeatures_right] )[1]
     
     
@@ -599,11 +598,11 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     
     print "Points:"
     print "Chessboard"
-    print "coords = \\\n", map(list, objp_result.T[:num_planar, :])
+    print "coords = \\\n", map(list, objp_result[:num_planar, :])
     print 
     if has_nonplanar:
         print "Non-planar geometry"
-        print "coords_nonplanar = \\\n", map(list, objp_result.T[num_planar:, :])
+        print "coords_nonplanar = \\\n", map(list, objp_result[num_planar:, :])
         print
     
     ### Return to remember last manually matched successful non-planar imagepoints

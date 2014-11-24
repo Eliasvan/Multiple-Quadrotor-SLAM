@@ -81,10 +81,8 @@ def keyframe_test(points1, points2):
     return w[0]/w[2] > homography_condition_threshold
 
 
-# Initialize consts or tmp vars to be used in linear_LS_triangulation()
+# Initialize consts to be used in linear_LS_triangulation()
 linear_LS_triangulation_c = -np.eye(2, 3)
-linear_LS_triangulation_A = np.zeros((4, 3))
-linear_LS_triangulation_b = np.zeros((4, 1))
 
 def linear_LS_triangulation(u, P, u1, P1):
     """
@@ -96,33 +94,34 @@ def linear_LS_triangulation(u, P, u1, P1):
     
     u and u1 are matrices: amount of points equals #columns and should be equal for u and u1.
     """
-    global linear_LS_triangulation_A, linear_LS_triangulation_b
+    A = np.zeros((4, 3))
+    b = np.zeros((4, 1))
     
     # Create array of triangulated points
-    x = np.zeros((3, u.shape[1]))
+    x = np.zeros((3, len(u)))
     
     # Initialize C matrices
     C = np.array(linear_LS_triangulation_c)
     C1 = np.array(linear_LS_triangulation_c)
     
-    for i in range(u.shape[1]):
+    for i in range(len(u)):
         # Build C matrices, to visualize calculation structure
-        C[:, 2] = u[:, i]
-        C1[:, 2] = u1[:, i]
+        C[:, 2] = u[i, :]
+        C1[:, 2] = u1[i, :]
         
         # Build A matrix
-        linear_LS_triangulation_A[0:2, :] = C.dot(P[0:3, 0:3])    # C * R
-        linear_LS_triangulation_A[2:4, :] = C1.dot(P1[0:3, 0:3])    # C1 * R1
+        A[0:2, :] = C.dot(P[0:3, 0:3])    # C * R
+        A[2:4, :] = C1.dot(P1[0:3, 0:3])    # C1 * R1
         
         # Build b vector
-        linear_LS_triangulation_b[0:2, :] = C.dot(P[0:3, 3:4])    # C * t
-        linear_LS_triangulation_b[2:4, :] = C1.dot(P1[0:3, 3:4])    # C1 * t1
-        linear_LS_triangulation_b *= -1
+        b[0:2, :] = C.dot(P[0:3, 3:4])    # C * t
+        b[2:4, :] = C1.dot(P1[0:3, 3:4])    # C1 * t1
+        b *= -1
         
         # Solve for x vector
-        cv2.solve(linear_LS_triangulation_A, linear_LS_triangulation_b, x[:, i:i+1], cv2.DECOMP_SVD)
+        cv2.solve(A, b, x[:, i:i+1], cv2.DECOMP_SVD)
     
-    return np.array(x, dtype=np.float32)    # solvePnPRansac() seems to dislike float64...
+    return np.array(x.T, dtype=np.float32)    # solvePnPRansac() seems to dislike float64...
 
 
 def reprojection_error(objp, imgp, rvec, tvec, cameraMatrix, distCoeffs):
@@ -516,9 +515,8 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             imgpnrm0 = cv2.undistortPoints(np.array([imgp0]), cameraMatrix, distCoeffs)[0]    # undistort and normalize to homogenous coordinates
             imgpnrm1 = cv2.undistortPoints(np.array([imgp1]), cameraMatrix, distCoeffs)[0]
             objp_done = linear_LS_triangulation(    # triangulate
-                    imgpnrm0.T, trfm.P_from_R_and_t(cvh.Rodrigues(rvec_keyfr), tvec_keyfr),    # data from last keyframe
-                    imgpnrm1.T, trfm.P_from_R_and_t(cvh.Rodrigues(rvec), tvec) )               # data from current frame
-            objp_done = objp_done.T
+                    imgpnrm0, trfm.P_from_R_and_t(cvh.Rodrigues(rvec_keyfr), tvec_keyfr),    # data from last keyframe
+                    imgpnrm1, trfm.P_from_R_and_t(cvh.Rodrigues(rvec), tvec) )               # data from current frame
             
             # <DEBUG: check reprojection error of the new freshly triangulated points, based on both pose estimates of keyframe and current cam>    TODO: remove
             print "triangl_reproj_error 0:", reprojection_error(objp_done, imgp0, rvec_keyfr, tvec_keyfr, cameraMatrix, distCoeffs)[0]
@@ -535,9 +533,8 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             
             # ... then do re-triangulation of 'inliers_objp_done' using refined pose estimation.
             objp_done = linear_LS_triangulation(    # triangulate
-                    imgpnrm0.T, trfm.P_from_R_and_t(cvh.Rodrigues(rvec_keyfr), tvec_keyfr),    # data from last keyframe
-                    imgpnrm1.T, trfm.P_from_R_and_t(cvh.Rodrigues(rvec), tvec) )               # data from current frame
-            objp_done = objp_done.T
+                    imgpnrm0, trfm.P_from_R_and_t(cvh.Rodrigues(rvec_keyfr), tvec_keyfr),    # data from last keyframe
+                    imgpnrm1, trfm.P_from_R_and_t(cvh.Rodrigues(rvec), tvec) )               # data from current frame
             
             # <DEBUG: check reprojection error of the new freshly (refined) triangulated points, based on both pose estimates of keyframe and current cam>    TODO: remove
             print "triangl_reproj_error 0 refined:", reprojection_error(objp_done, imgp0, rvec_keyfr, tvec_keyfr, cameraMatrix, distCoeffs)[0]
