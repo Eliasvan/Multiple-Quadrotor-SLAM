@@ -87,12 +87,11 @@ linear_LS_triangulation_c = -np.eye(2, 3)
 def linear_LS_triangulation(u, P, u1, P1):
     """
     Linear Least Squares based triangulation.
-    TODO: flip rows and columns to increase performance (improve for cache)
     
     (u, P) is the reference pair containing homogenous image coordinates (x, y) and the corresponding camera matrix.
     (u1, P1) is the second pair.
     
-    u and u1 are matrices: amount of points equals #columns and should be equal for u and u1.
+    u and u1 are matrices: amount of points equals #rows and should be equal for u and u1.
     """
     A = np.zeros((4, 3))
     b = np.zeros((4, 1))
