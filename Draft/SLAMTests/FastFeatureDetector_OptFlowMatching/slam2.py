@@ -81,15 +81,22 @@ def keyframe_test(points1, points2):
     return w[0]/w[2] > homography_condition_threshold
 
 
-# Initialize consts to be used in linear_LS_triangulation()
-linear_LS_triangulation_c = -np.eye(2, 3)
+# Initialize consts to be used in iterative_LS_triangulation()
+iterative_LS_triangulation_C = -np.eye(2, 3)
+iterative_LS_triangulation_tolerance = 1.e-6
 
-def linear_LS_triangulation(u, P, u1, P1):
+def iterative_LS_triangulation(u, P, u1, P1):
     """
-    Linear Least Squares based triangulation.
+    Iterative (Linear) Least Squares based triangulation.
+    From "Triangulation", Hartley, R.I. and Sturm, P., Computer vision and image understanding, 1997.
     
     (u, P) is the reference pair containing homogenous image coordinates (x, y) and the corresponding camera matrix.
     (u1, P1) is the second pair.
+    
+    Additionally returns a status-vector to indicate outliers:
+        True:  inlier
+        False: outlier
+    Outliers are selected based on non-convergence of depth, and on negativity of depths (=> behind camera(s)).
     
     u and u1 are matrices: amount of points equals #rows and should be equal for u and u1.
     """
@@ -97,19 +104,20 @@ def linear_LS_triangulation(u, P, u1, P1):
     b = np.zeros((4, 1))
     
     # Create array of triangulated points
-    x = np.zeros((3, len(u)))
+    x = np.empty((4, len(u))); x[3, :].fill(1)    # create empty array of homogenous 3D coordinates
+    x_status = np.zeros(len(u), dtype=int)    # default: mark every point as an outlier
     
     # Initialize C matrices
-    C = np.array(linear_LS_triangulation_c)
-    C1 = np.array(linear_LS_triangulation_c)
+    C = np.array(iterative_LS_triangulation_C)
+    C1 = np.array(iterative_LS_triangulation_C)
     
-    for i in range(len(u)):
-        # Build C matrices, to visualize calculation structure
-        C[:, 2] = u[i, :]
-        C1[:, 2] = u1[i, :]
+    for xi in range(len(u)):
+        # Build C matrices, to visualize calculation structure of A and b
+        C[:, 2] = u[xi, :]
+        C1[:, 2] = u1[xi, :]
         
         # Build A matrix
-        A[0:2, :] = C.dot(P[0:3, 0:3])    # C * R
+        A[0:2, :] = C.dot(P[0:3, 0:3])     # C * R
         A[2:4, :] = C1.dot(P1[0:3, 0:3])    # C1 * R1
         
         # Build b vector
@@ -117,10 +125,37 @@ def linear_LS_triangulation(u, P, u1, P1):
         b[2:4, :] = C1.dot(P1[0:3, 3:4])    # C1 * t1
         b *= -1
         
-        # Solve for x vector
-        cv2.solve(A, b, x[:, i:i+1], cv2.DECOMP_SVD)
+        # Init depths
+        d = d1 = 1.
+        
+        for i in range(10):    # Hartley suggests 10 iterations at most
+            # Solve for x vector
+            cv2.solve(A, b, x[0:3, xi:xi+1], cv2.DECOMP_SVD)
+            
+            # Calculate new depths
+            d_new = P[2, :].dot(x[:, xi])
+            d1_new = P1[2, :].dot(x[:, xi])
+            
+            # Convergence criterium
+            #print i, d_new - d, d1_new - d1, (d_new > 0 and d1_new > 0)    # TODO: remove
+            if abs(d_new - d) <= iterative_LS_triangulation_tolerance and \
+                    abs(d1_new - d1) <= iterative_LS_triangulation_tolerance:
+                x_status[xi] = (d_new > 0 and d1_new > 0)    # points should be in front of both cameras
+                if d_new <= 0: x_status[xi] -= 1    # TODO: remove
+                if d1_new <= 0: x_status[xi] -= 2    # TODO: remove
+                break
+            
+            # Re-weight A matrix and b vector with the new depths
+            A[0:2, :] *= 1 / d_new
+            A[2:4, :] *= 1 / d1_new
+            b[0:2, :] *= 1 / d_new
+            b[2:4, :] *= 1 / d1_new
+            
+            # Update depths
+            d = d_new
+            d1 = d1_new
     
-    return np.array(x.T, dtype=np.float32)    # solvePnPRansac() seems to dislike float64...
+    return np.array(x[0:3, :].T, dtype=np.float32), x_status    # solvePnPRansac() seems to dislike float64...
 
 
 def reprojection_error(objp, imgp, rvec, tvec, cameraMatrix, distCoeffs):
@@ -472,7 +507,7 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
     triangl_idxs, nontriangl_idxs, all_idxs_tmp = idxs_update_by_idxs(    # update indices to only preserve inliers
             preserve_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
     ret, rvec, tvec = cv2.solvePnP(    # perform solvePnP() to estimate the pose
-            filtered_triangl_objp, filtered_triangl_imgp, cameraMatrix, distCoeffs )
+            filtered_triangl_objp, filtered_triangl_imgp, cameraMatrix, distCoeffs, rvec_, tvec_, useExtrinsicGuess=True )
     
     # .. finally do a check on the average reprojection error, and reject frame if too high.
     reproj_error, imgp_reproj = reprojection_error(filtered_triangl_objp, filtered_triangl_imgp, rvec, tvec, cameraMatrix, distCoeffs)
@@ -513,17 +548,25 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             # </DEBUG>
             imgpnrm0 = cv2.undistortPoints(np.array([imgp0]), cameraMatrix, distCoeffs)[0]    # undistort and normalize to homogenous coordinates
             imgpnrm1 = cv2.undistortPoints(np.array([imgp1]), cameraMatrix, distCoeffs)[0]
-            objp_done = linear_LS_triangulation(    # triangulate
+            objp_done, objp_done_status = iterative_LS_triangulation(    # triangulate
                     imgpnrm0, trfm.P_from_R_and_t(cvh.Rodrigues(rvec_keyfr), tvec_keyfr),    # data from last keyframe
                     imgpnrm1, trfm.P_from_R_and_t(cvh.Rodrigues(rvec), tvec) )               # data from current frame
+            print "objp_done_status:", objp_done_status
+            inliers_objp_done = np.where(objp_done_status == 1)[0]
             
             # <DEBUG: check reprojection error of the new freshly triangulated points, based on both pose estimates of keyframe and current cam>    TODO: remove
             print "triangl_reproj_error 0:", reprojection_error(objp_done, imgp0, rvec_keyfr, tvec_keyfr, cameraMatrix, distCoeffs)[0]
             print "triangl_reproj_error 1:", reprojection_error(objp_done, imgp1, rvec, tvec, cameraMatrix, distCoeffs)[0]
             # </DEBUG>
             
+            # ... filter out outliers based on Iterative-LS triangulation convergence, and whether points are in front of all cameras, ...
+            objp_done = objp_done[inliers_objp_done]
+            imgp1 = imgp1[inliers_objp_done]
+            imgpnrm0 = imgpnrm0[inliers_objp_done]
+            imgpnrm1 = imgpnrm1[inliers_objp_done]
             filtered_triangl_objp = np.concatenate((filtered_triangl_objp, objp_done))    # collect all desired object-points
             filtered_triangl_imgp = np.concatenate((filtered_triangl_imgp, imgp1))    # collect corresponding image-points of current frame
+            preserve_idxs = triangl_idxs | set(nontriangl_idxs_array[inliers_objp_done])
             
             # ... then do solvePnP() on all preserved points ('inliers') to refine pose estimation, ...
             ret, rvec, tvec = cv2.solvePnP(    # perform solvePnP(), we start from the initial pose estimation
@@ -531,13 +574,16 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             print "total triangl_reproj_error 1 refined:", reprojection_error(filtered_triangl_objp, filtered_triangl_imgp, rvec, tvec, cameraMatrix, distCoeffs)[0]    # TODO: remove
             
             # ... then do re-triangulation of 'inliers_objp_done' using refined pose estimation.
-            objp_done = linear_LS_triangulation(    # triangulate
+            objp_done, objp_done_status = iterative_LS_triangulation(    # triangulate
                     imgpnrm0, trfm.P_from_R_and_t(cvh.Rodrigues(rvec_keyfr), tvec_keyfr),    # data from last keyframe
                     imgpnrm1, trfm.P_from_R_and_t(cvh.Rodrigues(rvec), tvec) )               # data from current frame
+            print "objp_done_status refined:", objp_done_status
             
             # <DEBUG: check reprojection error of the new freshly (refined) triangulated points, based on both pose estimates of keyframe and current cam>    TODO: remove
-            print "triangl_reproj_error 0 refined:", reprojection_error(objp_done, imgp0, rvec_keyfr, tvec_keyfr, cameraMatrix, distCoeffs)[0]
-            print "triangl_reproj_error 1 refined:", reprojection_error(objp_done, imgp1, rvec, tvec, cameraMatrix, distCoeffs)[0]
+            if len(inliers_objp_done):
+                imgp0 = imgp0[inliers_objp_done]
+                print "triangl_reproj_error 0 refined:", reprojection_error(objp_done, imgp0, rvec_keyfr, tvec_keyfr, cameraMatrix, distCoeffs)[0]
+                print "triangl_reproj_error 1 refined:", reprojection_error(objp_done, imgp1, rvec, tvec, cameraMatrix, distCoeffs)[0]
             # </DEBUG>
             
             # Update image-points and indices, and store the newly triangulated object-points and assign them the current group id
@@ -608,12 +654,12 @@ def main():
     cameraMatrix, distCoeffs, imageSize = \
             load_camera_intrinsics("camera_intrinsics.txt")
     #cameraMatrix, distCoeffs, imageSize = \
-            #load_camera_intrinsics("camera_intrinsics_front.txt")
+            #load_camera_intrinsics("../../ARDrone2Tests/camera_calibration/live_video/camera_intrinsics_front.txt")
     
     # Select working (or 'testing') set
     from glob import glob
     images = sorted(glob(os.path.join("captures2", "*.jpeg")))
-    #images = sorted(glob(os.path.join("drone0", "*.jpg")))
+    #images = sorted(glob(os.path.join("../../ARDrone2Tests/flying_front/lowres/drone0", "*.jpg")))[68:]
     
     # Setup some visualization helpers
     composite2D_painter = Composite2DPainter("composite 2D", imageSize)
@@ -636,11 +682,11 @@ def main():
     # keyframe_test
     homography_condition_threshold = 500    # defined as ratio between max and min singular values
     # reprojection error
-    max_solvePnP_reproj_error = 4.#0.5    # TODO: revert to a lower number
+    max_solvePnP_reproj_error = 2.#0.5    # TODO: revert to a lower number
     max_2nd_solvePnP_reproj_error = max_solvePnP_reproj_error / 2    # be more strict in a 2nd iteration, used after 1st pass of triangulation
     max_fundMat_reproj_error = 2.0
     # solvePnP
-    max_solvePnP_outlier_ratio = 0.3
+    max_solvePnP_outlier_ratio = 0.33
     max_2nd_solvePnP_outlier_ratio = 1.    # used in 2nd iteration, after 1st pass of triangulation
     solvePnP_use_extrinsic_guess = False    # TODO: set to True and see whether the 3D results are better
     
