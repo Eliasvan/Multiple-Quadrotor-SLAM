@@ -252,7 +252,7 @@ class Composite2DPainter:
             # Draw world axis-system
             draw_axis_system(self.img, rvec, tvec, cameraMatrix, distCoeffs)
             
-            # Draw to-be-triangulated point as dots with text indicating depth w.r.t. the camera
+            # Draw each already-triangulated point as a dot with text indicating depth w.r.t. the camera
             imgp = idxs_get_new_imgp_by_idxs(triangl_idxs, new_imgp, all_idxs_tmp)
             text_imgp = np.array(imgp)
             text_imgp += [(-15, 10)]    # adjust for text-position
@@ -265,7 +265,7 @@ class Composite2DPainter:
                 cvh.circle(self.img, ip, 2, color, thickness=-1)    # draw triangulated point
                 cvh.putText(self.img, "%.3f" % opd, ipt, fontFace, fontScale, color)    # draw depths
             
-            # Draw to-be-triangulated point as a cross
+            # Draw each to-be-triangulated point as a cross
             nontriangl_imgp = idxs_get_new_imgp_by_idxs(nontriangl_idxs, new_imgp, all_idxs_tmp).astype(int)
             color = color_palette[group_id % color_palette_size]
             for p in nontriangl_imgp:
