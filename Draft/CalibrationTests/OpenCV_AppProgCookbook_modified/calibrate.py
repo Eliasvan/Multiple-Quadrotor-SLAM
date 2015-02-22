@@ -15,6 +15,7 @@ import sys; sys.path.append("../../PythonLibraries")
 import transforms as trfm
 import cv2_helpers as cvh
 from cv2_helpers import rgb, format3DVector
+from triangulation import iterative_LS_triangulation
 
 
 
@@ -124,123 +125,6 @@ def reprojection_error(cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, ima
     
     return mean_error, square_error
 
-
-# Initialize consts to be used in iterative_LS_triangulation()
-iterative_LS_triangulation_C = -np.eye(2, 3)
-iterative_LS_triangulation_tolerance = 1.e-6
-
-def iterative_LS_triangulation(u, P, u1, P1):
-    """
-    Iterative (Linear) Least Squares based triangulation.
-    From "Triangulation", Hartley, R.I. and Sturm, P., Computer vision and image understanding, 1997.
-    
-    (u, P) is the reference pair containing homogenous image coordinates (x, y) and the corresponding camera matrix.
-    (u1, P1) is the second pair.
-    
-    Additionally returns a status-vector to indicate outliers:
-        True:  inlier
-        False: outlier
-    Outliers are selected based on non-convergence of depth, and on negativity of depths (=> behind camera(s)).
-    
-    u and u1 are matrices: amount of points equals #rows and should be equal for u and u1.
-    """
-    A = np.zeros((4, 3))
-    b = np.zeros((4, 1))
-    
-    # Create array of triangulated points
-    x = np.empty((4, len(u))); x[3, :].fill(1)    # create empty array of homogenous 3D coordinates
-    x_status = np.zeros(len(u), dtype=int)    # default: mark every point as an outlier
-    
-    # Initialize C matrices
-    C = np.array(iterative_LS_triangulation_C)
-    C1 = np.array(iterative_LS_triangulation_C)
-    
-    for xi in range(len(u)):
-        # Build C matrices, to visualize calculation structure of A and b
-        C[:, 2] = u[xi, :]
-        C1[:, 2] = u1[xi, :]
-        
-        # Build A matrix
-        A[0:2, :] = C.dot(P[0:3, 0:3])     # C * R
-        A[2:4, :] = C1.dot(P1[0:3, 0:3])    # C1 * R1
-        
-        # Build b vector
-        b[0:2, :] = C.dot(P[0:3, 3:4])    # C * t
-        b[2:4, :] = C1.dot(P1[0:3, 3:4])    # C1 * t1
-        b *= -1
-        
-        # Init depths
-        d = d1 = 1.
-        
-        for i in range(10):    # Hartley suggests 10 iterations at most
-            # Solve for x vector
-            cv2.solve(A, b, x[0:3, xi:xi+1], cv2.DECOMP_SVD)
-            
-            # Calculate new depths
-            d_new = P[2, :].dot(x[:, xi])
-            d1_new = P1[2, :].dot(x[:, xi])
-            
-            # Convergence criterium
-            print i, d_new - d, d1_new - d1, (d_new > 0 and d1_new > 0)
-            if abs(d_new - d) <= iterative_LS_triangulation_tolerance and \
-                    abs(d1_new - d1) <= iterative_LS_triangulation_tolerance:
-                x_status[xi] = (d_new > 0 and d1_new > 0)    # points should be in front of both cameras
-                if d_new <= 0: x_status[xi] -= 1    # TODO: remove
-                if d1_new <= 0: x_status[xi] -= 2    # TODO: remove
-                break
-            
-            # Re-weight A matrix and b vector with the new depths
-            A[0:2, :] *= 1 / d_new
-            A[2:4, :] *= 1 / d1_new
-            b[0:2, :] *= 1 / d_new
-            b[2:4, :] *= 1 / d1_new
-            
-            # Update depths
-            d = d_new
-            d1 = d1_new
-    
-    return x[0:3, :].T, x_status
-
-# Initialize consts to be used in linear_LS_triangulation()
-linear_LS_triangulation_C = -np.eye(2, 3)
-
-def linear_LS_triangulation(u, P, u1, P1):
-    """
-    Linear Least Squares based triangulation.
-    
-    (u, P) is the reference pair containing homogenous image coordinates (x, y) and the corresponding camera matrix.
-    (u1, P1) is the second pair.
-    
-    u and u1 are matrices: amount of points equals #rows and should be equal for u and u1.
-    """
-    A = np.zeros((4, 3))
-    b = np.zeros((4, 1))
-    
-    # Create array of triangulated points
-    x = np.zeros((3, len(u)))
-    
-    # Initialize C matrices
-    C = np.array(linear_LS_triangulation_C)
-    C1 = np.array(linear_LS_triangulation_C)
-    
-    for i in range(len(u)):
-        # Build C matrices, to visualize calculation structure of A and b
-        C[:, 2] = u[i, :]
-        C1[:, 2] = u1[i, :]
-        
-        # Build A matrix
-        A[0:2, :] = C.dot(P[0:3, 0:3])    # C * R
-        A[2:4, :] = C1.dot(P1[0:3, 0:3])    # C1 * R1
-        
-        # Build b vector
-        b[0:2, :] = C.dot(P[0:3, 3:4])    # C * t
-        b[2:4, :] = C1.dot(P1[0:3, 3:4])    # C1 * t1
-        b *= -1
-        
-        # Solve for x vector
-        cv2.solve(A, b, x[:, i:i+1], cv2.DECOMP_SVD)
-    
-    return x.T
 
 def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, imageSize, objp, boardSize, nonplanar_left, nonplanar_right):
     """ (TODO: remove debug-prints)
@@ -736,7 +620,6 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
             # Project axis-system
             imgp_reproj, jacob = cv2.projectPoints(
                     axis_system_objp, rvec, tvec, cameraMatrix, distCoeffs )
-            rounding = np.vectorize(lambda x: int(round(x)))
             origin, xAxis, yAxis, zAxis = np.rint(imgp_reproj.reshape(-1, 2)).astype(int)    # round to nearest int
             
             # OpenCV's 'rvec' and 'tvec' seem to be defined as follows:
