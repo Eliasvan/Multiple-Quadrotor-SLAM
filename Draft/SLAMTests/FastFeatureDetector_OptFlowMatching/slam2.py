@@ -5,6 +5,8 @@ from math import pi, ceil
 import numpy as np
 import glob
 import cv2
+
+import sys; sys.path.append("../../PythonLibraries")
 import cv2_helpers as cvh
 from cv2_helpers import rgb
 import transforms as trfm

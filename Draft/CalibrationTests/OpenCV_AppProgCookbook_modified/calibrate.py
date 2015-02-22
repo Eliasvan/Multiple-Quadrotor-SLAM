@@ -9,8 +9,10 @@
 import os
 from math import degrees, pi
 import numpy as np
-import transforms as trfm
 import cv2
+
+import sys; sys.path.append("../../PythonLibraries")
+import transforms as trfm
 import cv2_helpers as cvh
 from cv2_helpers import rgb, format3DVector
 
