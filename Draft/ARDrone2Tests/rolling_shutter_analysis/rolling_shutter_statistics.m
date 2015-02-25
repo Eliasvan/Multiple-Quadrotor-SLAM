@@ -40,11 +40,12 @@ class3pX  =                                        find(any(dataANormX >  3));  
 class3pY  =                                        find(any(dataANormY >  3));    % bad tracks
 class3p   = intersect(class3pX, class3pY);    % bad tracking error for both coordinates
 
-disp (['size(class0)    = ', num2str(length(class0))])
-disp (['size(classHalf) = ', num2str(length(classHalf))])
-disp (['size(class1)    = ', num2str(length(class1))])
-disp (['size(class3)    = ', num2str(length(class3))])
-disp (['size(class3p)   = ', num2str(length(class3p))])
+disp (['size(data)      = ', num2str(size(data,2)),      '    std = ', num2str(std(dataNormX(:,:)(:)))])
+disp (['size(class0)    = ', num2str(length(class0)),    '    std = ', num2str(std(dataNormX(:,class0)(:)))])
+disp (['size(classHalf) = ', num2str(length(classHalf)), '    std = ', num2str(std(dataNormX(:,classHalf)(:)))])
+disp (['size(class1)    = ', num2str(length(class1)),    '    std = ', num2str(std(dataNormX(:,class1)(:)))])
+disp (['size(class3)    = ', num2str(length(class3)),    '    std = ', num2str(std(dataNormX(:,class3)(:)))])
+disp (['size(class3p)   = ', num2str(length(class3p)),   '    std = ', num2str(std(dataNormX(:,class3p)(:)))])
 
 % Visualize class 0.5
 figure(4)
@@ -90,3 +91,20 @@ title('Class 3+    Histogram X')
 figure(15)
 hist(dataNormY(:,class3p(1)))
 title('Class 3+    Histogram Y')
+
+% Visualize outliers caused by bad tracks    (95% of the data seems to have a std < 1.0)
+dataNormRadius = sqrt(dataNormX.^2 + dataNormY.^2);
+sortedStdRadius = sort(std(dataNormRadius));
+figure(16)
+semilogy(linspace(0, 100, size(data,2)), sortedStdRadius)
+title('Standard Deviation of error (radius) of a feature vs percentile')
+
+L_1sigma = round(.6827 * length(sortedStdRadius));
+L_2sigma = round(.9545 * length(sortedStdRadius));
+L_3sigma = round(.9973 * length(sortedStdRadius));
+std_1sigma = sqrt(mean(sortedStdRadius(1:L_1sigma).^2));
+std_2sigma = sqrt(mean(sortedStdRadius(1:L_2sigma).^2));
+std_3sigma = sqrt(mean(sortedStdRadius(1:L_3sigma).^2));
+disp (['std of error radius within 1 sigma = ', num2str(std_1sigma)])
+disp (['std of error radius within 2 sigma = ', num2str(std_2sigma)])
+disp (['std of error radius within 3 sigma = ', num2str(std_3sigma)])

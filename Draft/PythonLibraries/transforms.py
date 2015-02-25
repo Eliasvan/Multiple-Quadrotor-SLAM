@@ -1,6 +1,7 @@
 from math import sqrt, sin, cos, acos, pi
 import numpy as np
 import numpy.linalg as LA
+import cv2
 
 
 
@@ -134,6 +135,21 @@ def P_inv(P):
     t = -R.dot(P[0:3, 3:4])
     
     return P_from_R_and_t(R, t)
+
+def delta_P(P2, P1):
+    """
+    Return P = P2 '-' P1,
+    where '-' denotes the difference between perspective transformations.
+    More accurately: P2 = P * P1, solved for "P".
+    """
+    P = np.empty((4, 4))
+    
+    cv2.solve(P1.T, P2.T, P, cv2.DECOMP_SVD)
+    P = P.T
+    P[3, 0:3] = 0    # make sure these are zero
+    P[3, 3] = 1    # make sure this is one
+    
+    return P
 
 def project_points(points, P, K):
     """

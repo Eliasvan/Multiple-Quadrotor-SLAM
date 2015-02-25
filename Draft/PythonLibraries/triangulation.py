@@ -3,6 +3,28 @@ import cv2
 
 
 
+max_coordinate_value = 1.e16    # detect points at infinity
+
+def linear_eigen_triangulation(u, P, u1, P1):
+    """
+    Linear Eigenvalue based (using SVD) triangulation.
+    Wrapper to OpenCV's "triangulatePoints()" function.
+    
+    (u, P) is the reference pair containing normalized image coordinates (x, y) and the corresponding camera matrix.
+    (u1, P1) is the second pair.
+    
+    u and u1 are matrices: amount of points equals #rows and should be equal for u and u1.
+    
+    The status-vector is based on the assumption that all 3D points have finite coordinates.
+    """
+    x = cv2.triangulatePoints(P[0:3, 0:4], P1[0:3, 0:4], u.T, u1.T)    # OpenCV's Linear-Eigen triangl
+    
+    x[0:3, :] /= x[3:4, :]    # normalize coordinates
+    x_status = (np.max(abs(x[0:3, :]), axis=0) <= max_coordinate_value)
+    
+    return x[0:3, :].T.astype(output_dtype), x_status
+
+
 # Initialize consts to be used in linear_LS_triangulation()
 linear_LS_triangulation_C = -np.eye(2, 3)
 
@@ -10,10 +32,12 @@ def linear_LS_triangulation(u, P, u1, P1):
     """
     Linear Least Squares based triangulation.
     
-    (u, P) is the reference pair containing homogenous image coordinates (x, y) and the corresponding camera matrix.
+    (u, P) is the reference pair containing normalized image coordinates (x, y) and the corresponding camera matrix.
     (u1, P1) is the second pair.
     
     u and u1 are matrices: amount of points equals #rows and should be equal for u and u1.
+    
+    The status-vector will be True for all points.
     """
     A = np.zeros((4, 3))
     b = np.zeros((4, 1))
@@ -42,12 +66,12 @@ def linear_LS_triangulation(u, P, u1, P1):
         # Solve for x vector
         cv2.solve(A, b, x[:, i:i+1], cv2.DECOMP_SVD)
     
-    return x.T.astype(output_dtype)
+    return x.T.astype(output_dtype), np.ones(len(u), dtype=bool)
 
 
 # Initialize consts to be used in iterative_LS_triangulation()
 iterative_LS_triangulation_C = -np.eye(2, 3)
-iterative_LS_triangulation_tolerance = 1.e-6
+iterative_LS_triangulation_tolerance = 1.e-6    # depth convergence tolerance # TODO: make tolerance relative instead of absolute
 
 def iterative_LS_triangulation(u, P, u1, P1):
     """
@@ -126,8 +150,16 @@ def iterative_LS_triangulation(u, P, u1, P1):
             
             # Convergence criterium
             #print i, d_new - d, d1_new - d1, (d_new > 0 and d1_new > 0)    # TODO: remove
+            #print i, (d_new - d) / d, (d1_new - d1) / d1, (d_new > 0 and d1_new > 0)    # TODO: remove
+            ##print i, u[xi, :] - P[0:2, :].dot(x[:, xi]) / d_new, u1[xi, :] - P1[0:2, :].dot(x[:, xi]) / d1_new    # TODO: remove
+            #print bool(i) and ((d_new - d) / (d - d_old), (d1_new - d1) / (d1 - d1_old), (d_new > 0 and d1_new > 0))    # TODO: remove
+            ##if abs(d_new - d) <= iterative_LS_triangulation_tolerance and abs(d1_new - d1) <= iterative_LS_triangulation_tolerance: print "Orig cond met"    # TODO: remove
             if abs(d_new - d) <= iterative_LS_triangulation_tolerance and \
                     abs(d1_new - d1) <= iterative_LS_triangulation_tolerance:
+            #if i and 1 - abs((d_new - d) / (d - d_old)) <= 1.e-2 and \    # TODO: remove
+                    #1 - abs((d1_new - d1) / (d1 - d1_old)) <= 1.e-2 and \    # TODO: remove
+                    #abs(d_new - d) <= iterative_LS_triangulation_tolerance and \    # TODO: remove
+                    #abs(d1_new - d1) <= iterative_LS_triangulation_tolerance:    # TODO: remove
                 x_status[xi] = (d_new > 0 and d1_new > 0)    # points should be in front of both cameras
                 if d_new <= 0: x_status[xi] -= 1    # TODO: remove
                 if d1_new <= 0: x_status[xi] -= 2    # TODO: remove
@@ -140,10 +172,43 @@ def iterative_LS_triangulation(u, P, u1, P1):
             b[2:4, :] *= 1 / d1_new
             
             # Update depths
+            d_old = d    # TODO: remove
+            d1_old = d1    # TODO: remove
             d = d_new
             d1 = d1_new
     
     return x[0:3, :].T.astype(output_dtype), x_status
+
+
+def polynomial_triangulation(u, P, u1, P1):
+    """
+    Polynomial (Optimal) triangulation.
+    Uses Linear-Eigen for final triangulation.
+    
+    (u, P) is the reference pair containing normalized image coordinates (x, y) and the corresponding camera matrix.
+    (u1, P1) is the second pair.
+    
+    u and u1 are matrices: amount of points equals #rows and should be equal for u and u1.
+    
+    The status-vector is based on the assumption that all 3D points have finite coordinates.
+    """
+    P_full = np.eye(4); P_full[0:3, :] = P[0:3, :]    # convert to 4x4
+    P1_full = np.eye(4); P1_full[0:3, :] = P1[0:3, :]    # convert to 4x4
+    P_canon = P1_full.dot(cv2.invert(P_full)[1])    # find canonical P which satisfies P1 = P_canon * P
+    
+    # "F = [t]_cross * R" [HZ 9.2.4]; transpose is needed for numpy
+    F = np.cross(P_canon[0:3, 3], P_canon[0:3, 0:3], axisb=0).T
+    
+    # Other way of calculating "F" [HZ (9.2)]
+    #op1 = (P1[0:3, 3:4] - P1[0:3, 0:3] .dot (cv2.invert(P[0:3, 0:3])[1]) .dot (P[0:3, 3:4]))
+    #op2 = P1[0:3, 0:4] .dot (cv2.invert(P_full)[1][0:4, 0:3])
+    #F = np.cross(op1.reshape(-1), op2, axisb=0).T
+    
+    # Project 2D matches to closest pair of epipolar lines
+    u_new, u1_new = cv2.correctMatches(F, u.reshape(1, len(u), 2), u1.reshape(1, len(u), 2))
+    
+    # Triangulate using the refined image points
+    return linear_eigen_triangulation(u_new[0], P, u1_new[0], P1)
 
 
 
@@ -152,7 +217,7 @@ output_dtype = float
 def set_triangl_output_dtype(output_dtype_):
     """
     Set the datatype of the triangulated 3D point positions.
-    (Default is set to "float".)
+    (Default is set to "float")
     """
     global output_dtype
     output_dtype = output_dtype_
