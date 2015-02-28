@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import random
-from math import tan, pi
+from math import tan, asin, pi
 import numpy as np
+from numpy import random
+import scipy.io as sio
 import cv2
 
 import sys; sys.path.append("../PythonLibraries")
@@ -48,7 +49,7 @@ def infinite_3D_points(r, max_angle, x_on=True, y_on=True):
 
 class Camera:
 
-    def camera_intrinsics(self, resolution, k1=0):
+    def camera_intrinsics(self, resolution, k1=0.):
         """
         Generate intrinsics matrix and distortion coefficients (4) of a camera
         with resolution given by "resolution": (width, height),
@@ -66,17 +67,18 @@ class Camera:
         
         self.f, self.c, self.K, self.dist_coeffs = f, c, K, dist_coeffs
 
-    def camera_pose(self, offset, sideways=0, towards=0, angle=0):
+    def camera_pose(self, offset, sideways=0., towards=0., angle=0.):
         """
         Generate 3x4 projection matrix of a camera initially
         with center at (0, 0, -"offset") with unit orientation (along +Z; Y-axis down)
-        and transformed by a translation (+"sideways", 0, +"towards") and by a local rotation of "angle" around Y-axis.
+        and transformed by a translation (+"sideways", 0, +"towards")
+            and by a local rotation of "angle" around Y-axis (to the left).
         """
         rvec = (0, angle, 0)
-        tvec = (sideways, 0, -offset + towards)
+        cam_center = (sideways, 0, -offset + towards)
         
         R = cv2.Rodrigues(rvec)[0]
-        tvec = R.dot(np.array(tvec).reshape(3, 1))
+        tvec = -R.dot(np.array(cam_center).reshape(3, 1))
         P = trfm.P_from_R_and_t(R, tvec)[0:3, :]
         
         self.P = P
@@ -110,8 +112,11 @@ class Camera:
         Apply additive zero mean gaussian noise to the projected points on the image.
         """
         
-        noise = [random.normalvariate(0, sigma) for i in range(self.points_2D_exact.size)]
-        points_2D = self.points_2D_exact + np.array(noise).reshape(self.points_2D_exact.shape)
+        if sigma:
+            points_2D = self.points_2D_exact + random.normal(0, sigma, self.points_2D_exact.shape)
+        else:
+            points_2D = self.points_2D_exact
+        
         if discretized:
             points_2D = np.rint(points_2D)
         
@@ -127,77 +132,6 @@ class Camera:
             u[:, 1] -= self.c[1]
             return u / self.f
         return cv2.undistortPoints(np.array([self.points_2D]), self.K, self.dist_coeffs)[0]
-
-
-
-""" Default scenario parameters, generators and random seeds """
-
-default_parameters = {
-    "finite_3D_points"      : True,
-    "3D_points_r"           : 4,
-    "3D_points_max_angle"   : pi / 4,
-    "3D_points_x_on"        : True,
-    "3D_points_y_on"        : True,
-    "3D_points_z_on"        : True,
-    
-    "cam_resolution"        : (640, 480),
-    "cam_k1"                : 0.3,
-    "cam_pose_offset"       : 40,
-    "cam_noise_sigma"       : 0.8,    # based on (99.7% of the) data of footage with rolling shutter
-    "cam_noise_discretized" : True,
-    
-    "cam1_pose_sideways"    : 0,
-    "cam1_pose_towards"     : 0,
-    "cam1_pose_angle"       : 0,
-    
-    "cam2_pose_sideways"    : 5,
-    "cam2_pose_towards"     : 0,
-    "cam2_pose_angle"       : 0
-}
-
-def data_from_parameters(params):
-    """
-    Return the data of a scenario defined by the given parameters.
-    The data consists of the 3D pointcloud, and the 2 cameras.
-    """
-    
-    if params["finite_3D_points"]:
-        points_3D = finite_3D_points(
-                params["3D_points_r"],
-                params["3D_points_x_on"], params["3D_points_y_on"], params["3D_points_z_on"] )
-    else:
-        points_3D = infinite_3D_points(
-                params["3D_points_r"], params["3D_points_max_angle"],
-                params["3D_points_x_on"], params["3D_points_y_on"] )
-    
-    cam1 = Camera()
-    cam1.camera_pose(
-            params["cam_pose_offset"],
-            params["cam1_pose_sideways"], params["cam1_pose_towards"], params["cam1_pose_angle"] )
-    
-    cam2 = Camera()
-    cam2.camera_pose(
-            params["cam_pose_offset"],
-            params["cam2_pose_sideways"], params["cam2_pose_towards"], params["cam2_pose_angle"] )
-    
-    for cam in (cam1, cam2):
-        cam.camera_intrinsics(params["cam_resolution"], params["cam_k1"])
-        cam.project_points(points_3D)
-        cam.apply_noise(params["cam_noise_sigma"], params["cam_noise_discretized"])
-    
-    return points_3D, cam1, cam2
-
-rseed = 123456789
-
-def reset_random(delta_rseed=0):
-    """
-    Reset the random generator.
-    This can be useful to reproduce the same results on different times,
-    or to synchronize results on different times.
-    
-    Use "delta_rseed" to start from another random seed.
-    """
-    random.seed(rseed + delta_rseed)
 
 
 
@@ -238,15 +172,114 @@ def error_rms(*errors):
     if type(errors) == tuple:
         errors = np.concatenate(errors)
     
-    return np.mean(errors), np.median(errors)
+    return np.sqrt(np.mean(errors)), np.sqrt(np.median(errors))
+
+def robustness_stat(errors, statuses):
+    """
+    Return the ratio of false positives and false negatives
+    based on the real 3D error "err3D",
+    and the estimated status "statuses" of the point (positive corresponds with a properly triangulated point).
+    
+    'properly triangulated' means that a certain threshold for the squared error distance is not exceeded.
+    """
+    if type(errors) == list:
+        errors = np.concatenate(errors)
+    if type(statuses) == list:
+        statuses = np.concatenate(statuses)
+    
+    positives_max = (errors <= robustness_thresh_max)
+    positives_min = (errors <= robustness_thresh_min)
+    positives_est = (statuses > 0)
+    
+    false_positives = np.logical_and(positives_max == False, positives_est)
+    false_negatives = np.logical_and(positives_min, positives_est == False)
+    
+    return np.mean(false_positives), np.mean(false_negatives)
+
+
+
+""" Default scenario parameters, generators and random seeds """
+
+default_parameters = {
+    "finite_3D_points"      : True,
+    "3D_points_r"           : 4,
+    "3D_points_max_angle"   : pi / 4,
+    "3D_points_x_on"        : True,
+    "3D_points_y_on"        : True,
+    "3D_points_z_on"        : True,
+    
+    "cam_resolution"        : (640, 480),
+    "cam_k1"                : 0.3,
+    "cam_pose_offset"       : 40.,
+    "cam_noise_sigma"       : 0.8,    # based on (99.7% of the) data of footage with rolling shutter
+    "cam_noise_discretized" : True,
+    
+    "cam1_pose_sideways"    : 0.,
+    "cam1_pose_towards"     : 0.,
+    "cam1_pose_angle"       : 0.,
+    
+    "cam2_pose_sideways"    : 5.,
+    "cam2_pose_towards"     : 0.,
+    "cam2_pose_angle"       : 0.
+}
+
+def data_from_parameters(params):
+    """
+    Return the data of a scenario defined by the given parameters.
+    The data consists of the 3D pointcloud, and the 2 cameras.
+    """
+    
+    if params["finite_3D_points"]:
+        points_3D = finite_3D_points(
+                params["3D_points_r"],
+                params["3D_points_x_on"], params["3D_points_y_on"], params["3D_points_z_on"] )
+    else:
+        points_3D = infinite_3D_points(
+                params["3D_points_r"], params["3D_points_max_angle"],
+                params["3D_points_x_on"], params["3D_points_y_on"] )
+    
+    cam1 = Camera()
+    cam1.camera_pose(
+            params["cam_pose_offset"],
+            params["cam1_pose_sideways"], params["cam1_pose_towards"], params["cam1_pose_angle"] )
+    
+    cam2 = Camera()
+    cam2.camera_pose(
+            params["cam_pose_offset"],
+            params["cam2_pose_sideways"], params["cam2_pose_towards"], params["cam2_pose_angle"] )
+    
+    for cam in (cam1, cam2):
+        cam.camera_intrinsics(params["cam_resolution"], params["cam_k1"])
+        cam.project_points(points_3D)
+        cam.apply_noise(params["cam_noise_sigma"], params["cam_noise_discretized"])
+    
+    return points_3D, cam1, cam2
+
+def reset_random(delta_rseed=0):
+    """
+    Reset the random generator.
+    This can be useful to reproduce the same results on different times,
+    or to synchronize results on different times.
+    
+    Use "delta_rseed" to start from another random seed.
+    """
+    random.seed(rseed + delta_rseed)
 
 
 
 """ Test cases """
 
-num_trials = 1    # amount of samples taken for a random variable    # TODO: set this to 100
+num_trials = 10    # amount of samples taken for a random variable    # TODO: set this to 100
+rseed = 123456789
+
+robustness_thresh_max = 10.**2    # error distance threshold, if exceeded, it is better to discard the point
+robustness_thresh_min =  1.**2    # error distance threshold, if not exceeded, it is better to keep the point
+
 triangl_methods = [    # triangulation methods to test
-    triangulation.linear_LS_triangulation
+    triangulation.linear_eigen_triangulation,
+    triangulation.linear_LS_triangulation,
+    triangulation.iterative_LS_triangulation,
+    triangulation.polynomial_triangulation
 ]
 
 def test1():
@@ -255,25 +288,27 @@ def test1():
     """
     pass
 
-def test2(sideways=19, towards=13, angle=pi/8, num_poses=100):
+def test2(max_sideways=12., max_towards=12., max_angle=None, num_poses=40):
     """
-    Effect of camera configurations.
+    Effect of (2nd) camera configurations.
     
-    "sideways" determines the maximum 'sideway' movement of the second camera.
-    "towards" determines the maximum 'towards' movement of the second camera.
-    "angle" determines the maximum Y rotation of the second camera.
-    The path between zero and "sideways" or "towards", consists of "num_poses" nodes.
+    "max_sideways" determines the maximum 'sideway' movement of the second camera.
+    "max_towards" determines the maximum 'towards' movement of the second camera.
+    "max_angle" determines the maximum Y rotation of the second camera,
+        describing part of a circle around the origin.
+        If this parameter is set to None,
+        the angle is determined by the intersection of the circle with the plane at X="max_sideways".
+    Each trajectory/path consists of "num_poses" nodes.
     """
     params = dict(default_parameters)
     points_3D, cam1, cam2 = data_from_parameters(params)
     
-    sideways_values = np.linspace(sideways, 0, num_poses)
-    towards_values = np.linspace(0, towards, num_poses)
-    angle_values = np.linspace(0, angle, num_poses)
+    if max_angle == None:
+        max_angle = asin(max_sideways / params["cam_pose_offset"])
     
-    num_pose_configs = 4
-    err3D_summary = np.zeros((num_pose_configs, num_poses, len(triangl_methods)))
-    err2D_summary = np.zeros((num_pose_configs, num_poses, len(triangl_methods)))
+    num_trajectories = 4
+    err3D_mean_summary, err3D_median_summary, err2D_mean_summary, err2D_median_summary, false_pos_summary, false_neg_summary = \
+            np.zeros((6, num_trajectories, num_poses, len(triangl_methods)))
     
     def execute_pose_config(ptci, pci, sideways, towards, angle):
         """
@@ -284,11 +319,11 @@ def test2(sideways=19, towards=13, angle=pi/8, num_poses=100):
         cam2.camera_pose(params["cam_pose_offset"], sideways, towards, angle)
         cam2.project_points(points_3D)
         
-        err3D = []
-        err2D = []
+        errs3D, errs2D, statuses = [], [], []
         for ti in range(len(triangl_methods)):
-            err3D.append([])
-            err2D.append([])
+            errs3D.append([])
+            errs2D.append([])
+            statuses.append([])
         
         reset_random()
         for trial in range(num_trials):
@@ -304,34 +339,63 @@ def test2(sideways=19, towards=13, angle=pi/8, num_poses=100):
             u2 = cam2.normalized_points()
             
             for ti, triangl_method in enumerate(triangl_methods):
+                start_timer()
                 points_3D_calc, status = triangl_method(u1, cam1.P, u2, cam2.P)
-                err3D[ti].append(errors_3D(points_3D, points_3D_calc))
-                err2D[ti] += errors_2D(points_3D_calc, cam1, cam2)
+                stop_timer()
+                errs3D[ti].append(errors_3D(points_3D, points_3D_calc))
+                errs2D[ti] += errors_2D(points_3D_calc, cam1, cam2)
+                statuses[ti].append(status)
         
         for ti in range(len(triangl_methods)):
-            err3D_mean, err3D_median = error_rms(*err3D[ti])
-            err2D_mean, err2D_median = error_rms(*err2D[ti])
-            
-            err3D_summary[ptci, pci, ti] = err3D_median
-            err2D_summary[ptci, pci, ti] = err2D_median
+            err3D_mean_summary[ptci, pci, ti], err3D_median_summary[ptci, pci, ti] = \
+                    error_rms(*errs3D[ti])
+            err2D_mean_summary[ptci, pci, ti], err2D_median_summary[ptci, pci, ti] = \
+                    error_rms(*errs2D[ti])
+            false_pos_summary[ptci, pci, ti], false_neg_summary[ptci, pci, ti] = \
+                    robustness_stat(errs3D[ti], statuses[ti])
     
-    towards = angle = 0
+    sideways_values = np.linspace(0, max_sideways, num_poses)
+    towards_values = np.linspace(0, max_towards, num_poses)
+    angle_values = np.linspace(0, max_angle, num_poses)
+    
+    # Trajectory 1: From 1st cam, to sideways
     for pci, (sideways) in enumerate(sideways_values):
-        execute_pose_config(0, pci, sideways, towards, angle)
+        execute_pose_config(0, pci, sideways, 0., 0.)
     
-    angle = 0
-    for pci, (sideways, towards) in enumerate(zip(sideways_values, towards_values)):
-        execute_pose_config(1, pci, sideways, towards, angle)
+    # Trajectory 2: From 1st cam, towards the sphere of points
+    for pci, (towards) in enumerate(towards_values):
+        execute_pose_config(1, pci, 0., towards, 0.)
     
-    towards = 0
-    for pci, (sideways, angle) in enumerate(zip(sideways_values, angle_values)):
-        execute_pose_config(2, pci, sideways, towards, angle)
+    # Trajectory 3: From last pose of trajectory 1, towards the sphere of points, parallel to trajectory 2
+    for pci, (towards) in enumerate(towards_values):
+        execute_pose_config(2, pci, sideways_values[-1], towards, 0.)
     
+    # Trajectory 4: From 1st cam, describing circle (while facing the sphere of points) until intersecting with trajectory 3
+    sideways_values = params["cam_pose_offset"] * np.sin(angle_values)
+    towards_values = params["cam_pose_offset"] * (1 - np.cos(angle_values))
     for pci, (sideways, towards, angle) in enumerate(zip(sideways_values, towards_values, angle_values)):
         execute_pose_config(3, pci, sideways, towards, angle)
     
-    # TODO: save "err3D_summary" and "err2D_summary"
-        
+    variables = {
+            "err3D_mean_summary"    : err3D_mean_summary,
+            "err3D_median_summary"  : err3D_median_summary,
+            "err2D_mean_summary"    : err2D_mean_summary,
+            "err2D_median_summary"  : err2D_median_summary,
+            "false_pos_summary"     : false_pos_summary,
+            "false_neg_summary"     : false_neg_summary,
+            "triangl_methods"   : [m.func_name for m in triangl_methods],
+            "trajectories"      : ["From 1st cam, to sideways",
+                                   "From 1st cam, towards the sphere of points",
+                                   "From last pose of trajectory 1, towards the sphere of points, parallel to trajectory 2",
+                                   "From 1st cam, describing circle (while facing the sphere of points) until intersecting with trajectory 3"],
+            "units"             : ["trajectory id", "node in a trajectory", "triangulation method"],
+            "robustness_thresh_max" : robustness_thresh_max,
+            "robustness_thresh_min" : robustness_thresh_min,
+            "num_trials"            : num_trials,
+            "rseed"                 : rseed,
+            "default_parameters"    : default_parameters,
+            "parameters"        : {"max_sideways": max_sideways, "max_towards": max_towards, "max_angle": max_angle, "num_poses": num_poses} }
+    sio.savemat("test2.mat", variables)
 
 def test3():
     """
@@ -341,13 +405,26 @@ def test3():
 
 
 
+from time import time
+t = 0
+ts = 0
+def start_timer():
+    global ts
+    ts = time()
+def stop_timer():
+    global t
+    t += time() - ts
+def print_timer():
+    print t
+
 def main():
-    rstate = random.getstate()
+    rstate = random.get_state()
     reset_random()
     test1()
     test2()
     test3()
-    random.setstate(rstate)
+    print_timer()
+    random.set_state(rstate)
 
 if __name__ == "__main__":
     main()
