@@ -45,6 +45,24 @@ def infinite_3D_points(r, max_angle, x_on=True, y_on=True):
                                       if (x*x + y*y) <= r*r ])
     return points
 
+def scene_3D_points(r=1., filename="scene_3D_points.mat"):
+    """
+    Load 3D coordinates of points from a MATLAB file given by filename "filename".
+    Use "r" as geometry scaling factor.
+    
+    The points are assumed to be confined in a cube with edges of length 2.
+    The number of columns of the MATLAB variable "scene_3D_points" should
+    equal 3 or 4 (in case of homogeneous coordinates).
+    """
+    
+    points = sio.loadmat(filename)["scene_3D_points"]
+    if points.shape[1] == 3:
+        points = np.concatenate((points, np.ones((len(points), 1))), axis=1)
+    
+    points[:, 0:3] *= r
+    
+    return points
+
 """ Camera configurations """
 
 class Camera:
@@ -201,7 +219,7 @@ def robustness_stat(errors, statuses):
 """ Default scenario parameters, generators and random seeds """
 
 default_parameters = {
-    "finite_3D_points"      : True,
+    "3D_points_source"      : "finite",
     "3D_points_r"           : 4,
     "3D_points_max_angle"   : pi / 4,
     "3D_points_x_on"        : True,
@@ -229,14 +247,16 @@ def data_from_parameters(params):
     The data consists of the 3D pointcloud, and the 2 cameras.
     """
     
-    if params["finite_3D_points"]:
+    if params["3D_points_source"] == "finite":
         points_3D = finite_3D_points(
                 params["3D_points_r"],
                 params["3D_points_x_on"], params["3D_points_y_on"], params["3D_points_z_on"] )
-    else:
+    elif params["3D_points_source"] == "infinite":
         points_3D = infinite_3D_points(
                 params["3D_points_r"], params["3D_points_max_angle"],
                 params["3D_points_x_on"], params["3D_points_y_on"] )
+    elif params["3D_points_source"] == "scene":
+        points_3D = scene_3D_points(params["3D_points_r"])
     
     cam1 = Camera()
     cam1.camera_pose(
@@ -306,6 +326,8 @@ def test2(max_sideways=12., max_towards=12., max_angle=None, num_poses=40):
     if max_angle == None:
         max_angle = asin(max_sideways / params["cam_pose_offset"])
     
+    is_inside_view = [True]
+    traj_description = []
     num_trajectories = 4
     err3D_mean_summary, err3D_median_summary, err2D_mean_summary, err2D_median_summary, false_pos_summary, false_neg_summary = \
             np.zeros((6, num_trajectories, num_poses, len(triangl_methods)))
@@ -333,7 +355,10 @@ def test2(max_sideways=12., max_towards=12., max_angle=None, num_poses=40):
             #np.set_printoptions(threshold=5)
             #print cam2.points_2D
             #print np.min(cam2.points_2D[:, 0]), np.max(cam2.points_2D[:, 0]), np.min(cam2.points_2D[:, 1]), np.max(cam2.points_2D[:, 1])
-            #print all(0 <= cam2.points_2D[:, 0]) and all(cam2.points_2D[:, 0] < 640) and all(0 <= cam2.points_2D[:, 1]) and all(cam2.points_2D[:, 1] < 480)
+            #print all(0 <= cam2.points_2D[:, 0]) and all(cam2.points_2D[:, 0] < params["cam_resolution"][0]) and all(0 <= cam2.points_2D[:, 1]) and all(cam2.points_2D[:, 1] < params["cam_resolution"][1])
+            is_inside_view[0] *= (
+                    all(0 <= cam2.points_2D[:, 0]) and all(cam2.points_2D[:, 0] < params["cam_resolution"][0]) and 
+                    all(0 <= cam2.points_2D[:, 1]) and all(cam2.points_2D[:, 1] < params["cam_resolution"][1]) )
             
             u1 = cam1.normalized_points()
             u2 = cam2.normalized_points()
@@ -358,23 +383,30 @@ def test2(max_sideways=12., max_towards=12., max_angle=None, num_poses=40):
     towards_values = np.linspace(0, max_towards, num_poses)
     angle_values = np.linspace(0, max_angle, num_poses)
     
-    # Trajectory 1: From 1st cam, to sideways
+    # Trajectory 1:
+    traj_description.append("From 1st cam, to sideways")
     for pci, (sideways) in enumerate(sideways_values):
         execute_pose_config(0, pci, sideways, 0., 0.)
     
-    # Trajectory 2: From 1st cam, towards the sphere of points
+    # Trajectory 2:
+    traj_description.append("From 1st cam, towards the sphere of points")
     for pci, (towards) in enumerate(towards_values):
         execute_pose_config(1, pci, 0., towards, 0.)
     
-    # Trajectory 3: From last pose of trajectory 1, towards the sphere of points, parallel to trajectory 2
+    # Trajectory 3:
+    traj_description.append("From last pose of trajectory 1, towards the sphere of points, parallel to trajectory 2")
     for pci, (towards) in enumerate(towards_values):
         execute_pose_config(2, pci, sideways_values[-1], towards, 0.)
     
-    # Trajectory 4: From 1st cam, describing circle (while facing the sphere of points) until intersecting with trajectory 3
+    # Trajectory 4:
+    traj_description.append("From 1st cam, describing circle (while facing the sphere of points) until intersecting with trajectory 3")
     sideways_values = params["cam_pose_offset"] * np.sin(angle_values)
     towards_values = params["cam_pose_offset"] * (1 - np.cos(angle_values))
     for pci, (sideways, towards, angle) in enumerate(zip(sideways_values, towards_values, angle_values)):
         execute_pose_config(3, pci, sideways, towards, angle)
+    
+    if not is_inside_view[0]:
+        print "Warning: some points fell out of view."
     
     variables = {
             "err3D_mean_summary"    : err3D_mean_summary,
@@ -384,10 +416,7 @@ def test2(max_sideways=12., max_towards=12., max_angle=None, num_poses=40):
             "false_pos_summary"     : false_pos_summary,
             "false_neg_summary"     : false_neg_summary,
             "triangl_methods"   : [m.func_name for m in triangl_methods],
-            "trajectories"      : ["From 1st cam, to sideways",
-                                   "From 1st cam, towards the sphere of points",
-                                   "From last pose of trajectory 1, towards the sphere of points, parallel to trajectory 2",
-                                   "From 1st cam, describing circle (while facing the sphere of points) until intersecting with trajectory 3"],
+            "traj_description"  : traj_description,
             "units"             : ["trajectory id", "node in a trajectory", "triangulation method"],
             "robustness_thresh_max" : robustness_thresh_max,
             "robustness_thresh_min" : robustness_thresh_min,
