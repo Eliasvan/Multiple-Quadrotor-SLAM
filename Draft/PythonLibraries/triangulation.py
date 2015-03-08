@@ -142,6 +142,7 @@ def iterative_LS_triangulation(u1, P1, u2, P2):
         
         for i in range(10):    # Hartley suggests 10 iterations at most
             # Solve for x vector
+            x_old = np.array(x[0:3, xi])
             cv2.solve(A, b, x[0:3, xi:xi+1], cv2.DECOMP_SVD)
             
             # Calculate new depths
@@ -151,11 +152,13 @@ def iterative_LS_triangulation(u1, P1, u2, P2):
             # Convergence criterium
             #print i, d1_new - d1, d2_new - d2, (d1_new > 0 and d2_new > 0)    # TODO: remove
             #print i, (d1_new - d1) / d1, (d2_new - d2) / d2, (d1_new > 0 and d2_new > 0)    # TODO: remove
+            #print i, np.sqrt(np.sum((x[0:3, xi] - x_old)**2)), (d1_new > 0 and d2_new > 0)    # TODO: remove
             ##print i, u1[xi, :] - P1[0:2, :].dot(x[:, xi]) / d1_new, u2[xi, :] - P2[0:2, :].dot(x[:, xi]) / d2_new    # TODO: remove
             #print bool(i) and ((d1_new - d1) / (d1 - d_old), (d2_new - d2) / (d2 - d1_old), (d1_new > 0 and d2_new > 0))    # TODO: remove
             ##if abs(d1_new - d1) <= iterative_LS_triangulation_tolerance and abs(d2_new - d2) <= iterative_LS_triangulation_tolerance: print "Orig cond met"    # TODO: remove
             if abs(d1_new - d1) <= iterative_LS_triangulation_tolerance and \
                     abs(d2_new - d2) <= iterative_LS_triangulation_tolerance:
+            #if i and np.sum((x[0:3, xi] - x_old)**2) <= 0.0001**2:
             #if abs((d1_new - d1) / d1) <= 3.e-6 and \
                     #abs((d2_new - d2) / d2) <= 3.e-6: #and \
                     #abs(d1_new - d1) <= iterative_LS_triangulation_tolerance and \

@@ -492,20 +492,34 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             imgp1 = imgp1[inliers_objp_done]
             imgpnrm0 = imgpnrm0[inliers_objp_done]
             imgpnrm1 = imgpnrm1[inliers_objp_done]
-            filtered_triangl_objp = np.concatenate((filtered_triangl_objp, objp_done))    # collect all desired object-points
-            filtered_triangl_imgp = np.concatenate((filtered_triangl_imgp, imgp1))    # collect corresponding image-points of current frame
-            preserve_idxs = triangl_idxs | set(nontriangl_idxs_array[inliers_objp_done])
+            filtered_triangl_objp_tmp = np.concatenate((filtered_triangl_objp, objp_done))    # collect all desired object-points
+            filtered_triangl_imgp_tmp = np.concatenate((filtered_triangl_imgp, imgp1))    # collect corresponding image-points of current frame
+            nontriangl_idxs_array = nontriangl_idxs_array[inliers_objp_done]
             
             # ... then do solvePnP() on all preserved points ('inliers') to refine pose estimation, ...
             ret, rvec, tvec = cv2.solvePnP(    # perform solvePnP(), we start from the initial pose estimation
-                    filtered_triangl_objp, filtered_triangl_imgp, cameraMatrix, distCoeffs, rvec, tvec, useExtrinsicGuess=True )
-            print "total triangl_reproj_error 1 refined:", reprojection_error(filtered_triangl_objp, filtered_triangl_imgp, rvec, tvec, cameraMatrix, distCoeffs)[0]    # TODO: remove
+                    filtered_triangl_objp_tmp, filtered_triangl_imgp_tmp, cameraMatrix, distCoeffs, rvec, tvec, useExtrinsicGuess=True )
+            print "total triangl_reproj_error 1 refined:", reprojection_error(filtered_triangl_objp_tmp, filtered_triangl_imgp_tmp, rvec, tvec, cameraMatrix, distCoeffs)[0]    # TODO: remove
             
             # ... then do re-triangulation of 'inliers_objp_done' using refined pose estimation.
             objp_done, objp_done_status = iterative_LS_triangulation(    # triangulate
                     imgpnrm0, trfm.P_from_R_and_t(cvh.Rodrigues(rvec_keyfr), tvec_keyfr),    # data from last keyframe
                     imgpnrm1, trfm.P_from_R_and_t(cvh.Rodrigues(rvec), tvec) )               # data from current frame
             print "objp_done_status refined:", objp_done_status
+            
+            ## Uncomment this to re-filter triangulation output, otherwise ...
+            #inliers_objp_done = np.where(objp_done_status == 1)[0]
+            #objp_done = objp_done[inliers_objp_done]
+            #imgp1 = imgp1[inliers_objp_done]
+            #imgpnrm0 = imgpnrm0[inliers_objp_done]
+            #imgpnrm1 = imgpnrm1[inliers_objp_done]
+            ##filtered_triangl_objp = np.concatenate((filtered_triangl_objp, objp_done))    # collect all desired object-points
+            #filtered_triangl_imgp = np.concatenate((filtered_triangl_imgp, imgp1))    # collect corresponding image-points of current frame
+            #preserve_idxs = triangl_idxs | set(nontriangl_idxs_array[inliers_objp_done])
+            
+            # ... uncomment this.
+            filtered_triangl_imgp = filtered_triangl_imgp_tmp
+            preserve_idxs = triangl_idxs | set(nontriangl_idxs_array)
             
             # <DEBUG: check reprojection error of the new freshly (refined) triangulated points, based on both pose estimates of keyframe and current cam>    TODO: remove
             if len(inliers_objp_done):

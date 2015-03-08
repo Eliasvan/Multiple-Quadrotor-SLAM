@@ -155,7 +155,7 @@ class Camera:
 
 """ Error evaluation functions """
 
-def errors_3D(points_3D_exact, points_3D_calc):
+def error_vectors_3D(points_3D_exact, points_3D_calc):
     """
     Return the squared euclidean errors between each point of "points_3D_exact" and "points_3D_calc".
     The 3D points of "points_3D_calc" must not have homogeneous coordinates.
@@ -164,9 +164,9 @@ def errors_3D(points_3D_exact, points_3D_calc):
     """
     
     # Convert "points_3D_exact" from 4D to 3D (assumes weighting of 1.0)
-    return np.sum((points_3D_calc - points_3D_exact[:, 0:3])**2, axis=1)
+    return points_3D_calc - points_3D_exact[:, 0:3]
 
-def errors_2D(points_3D_calc, cam1, cam2):
+def error_vectors_2D(points_3D_calc, cam1, cam2):
     """
     Return the squared euclidean errors between each point of "cam1" and "points_3D_calc".
     """
@@ -176,21 +176,47 @@ def errors_2D(points_3D_calc, cam1, cam2):
     cam1_points_2D_calc = cam1.project_points(points_3D_calc, False)
     cam2_points_2D_calc = cam2.project_points(points_3D_calc, False)
     
-    cam1_errors_2D = np.sum((cam1_points_2D_calc - cam1.points_2D_exact)**2, axis=1)
-    cam2_errors_2D = np.sum((cam2_points_2D_calc - cam2.points_2D_exact)**2, axis=1)
+    cam1_errors_2D = cam1_points_2D_calc - cam1.points_2D_exact
+    cam2_errors_2D = cam2_points_2D_calc - cam2.points_2D_exact
     
     return cam1_errors_2D, cam2_errors_2D
 
-def error_rms(*errors):
+def error_rms(error_vectors):
     """
     Return the root mean 
        and the root median
-    of all (squared) errors.
+    square error of all error_vectors,
+    as well as a list of errors.
     """
-    if type(errors) == tuple:
-        errors = np.concatenate(errors)
+    if type(error_vectors) == list:
+        error_vectors = np.concatenate(error_vectors)
     
-    return np.sqrt(np.mean(errors)), np.sqrt(np.median(errors))
+    errors = np.sum(error_vectors**2, axis=1)
+    
+    return np.sqrt(np.mean(errors)), np.sqrt(np.median(errors)), errors
+
+def vector_stat(error_vectors):
+    """
+    Return the mean vector and covariance matrix of each point in "error_vectors".
+    "error_vectors" has dimensions (num_trials, N, d) where
+        "num_trials" is the amount of repeated measurements,
+        "N" is the amount of different (unrelated) points,
+        "d" is the dimension of a point vector.
+    """
+    num_trials = float(error_vectors.shape[0])
+    d = error_vectors.shape[2]
+    
+    means = np.empty((error_vectors.shape[1], d))
+    covars = np.empty((error_vectors.shape[1], d, d))
+    one = np.ones((num_trials, 1))
+    
+    for i in range(error_vectors.shape[1]):
+        point_measurements = error_vectors[:, i, :]
+        means[i] = one.T.dot(point_measurements) / num_trials
+        point_deviations = point_measurements - one.dot(means[i].reshape(1, d))
+        covars[i] = point_deviations.T.dot(point_deviations) / num_trials
+    
+    return means, covars
 
 def robustness_stat(errors, statuses):
     """
@@ -200,8 +226,6 @@ def robustness_stat(errors, statuses):
     
     'properly triangulated' means that a certain threshold for the squared error distance is not exceeded.
     """
-    if type(errors) == list:
-        errors = np.concatenate(errors)
     if type(statuses) == list:
         statuses = np.concatenate(statuses)
     
@@ -275,6 +299,36 @@ def data_from_parameters(params):
     
     return points_3D, cam1, cam2
 
+def cam_trajectory(traj_descr, cam_pose_offset, num_poses,
+                   from_sideways=0., to_sideways=0., from_towards=0., to_towards=0., from_angle=0., to_angle=0.,
+                   angle_until_sideways=False):
+    """
+    A trajectory description "traj_descr", as well as the camera -Z offset "cam_pose_offset" should be provided.
+    Each trajectory/path consists of "num_poses" nodes.
+    
+    All "from_*" parameters result in a linear interpolation to the corresponding "to_*" parameters.
+    See "Camera.camera_pose()" for the documentation of the "*" parameters.
+    
+    If "angle_until_sideways" is set to True,
+        the "to_angle" parameter is determined by the intersection of the XZ circle centered at the origin
+        with the plane at X="to_sideways".
+    """
+    
+    if angle_until_sideways:
+        to_angle = asin(to_sideways / cam_pose_offset)
+        angle_values = np.linspace(from_angle, to_angle, num_poses)
+        sideways_values = cam_pose_offset * np.sin(angle_values)
+        towards_values = cam_pose_offset * (1 - np.cos(angle_values))
+    else:
+        sideways_values = np.linspace(from_sideways, to_sideways, num_poses)
+        towards_values = np.linspace(from_towards, to_towards, num_poses)
+        angle_values = np.linspace(from_angle, to_angle, num_poses)
+    
+    return { "traj_descr"        : traj_descr,
+             "sideways_values"   : sideways_values,
+             "towards_values"    : towards_values,
+             "angle_values"      : angle_values }
+
 def reset_random(delta_rseed=0):
     """
     Reset the random generator.
@@ -292,8 +346,8 @@ def reset_random(delta_rseed=0):
 num_trials = 10    # amount of samples taken for a random variable    # TODO: set this to 100
 rseed = 123456789
 
-robustness_thresh_max = 10.**2    # error distance threshold, if exceeded, it is better to discard the point
-robustness_thresh_min =  1.**2    # error distance threshold, if not exceeded, it is better to keep the point
+robustness_thresh_max = 1.**2    # error distance threshold, if exceeded, it is better to discard the point
+robustness_thresh_min = 1.**2    # error distance threshold, if not exceeded, it is better to keep the point
 
 triangl_methods = [    # triangulation methods to test
     triangulation.linear_eigen_triangulation,
@@ -302,110 +356,111 @@ triangl_methods = [    # triangulation methods to test
     triangulation.polynomial_triangulation
 ]
 
-def test1():
-    """
-    Effect of 3D point positions.
-    """
-    pass
+num_poses = 40
+max_sideways = 12.
+max_towards = 12.
+trajectories = [    # trajectories of 2nd cam
+    # Trajectory 1
+    cam_trajectory("From 1st cam, to sideways",
+                   default_parameters["cam_pose_offset"], num_poses, to_sideways=max_sideways),
+    # Trajectory 2
+    cam_trajectory("From 1st cam, towards the sphere of points",
+                   default_parameters["cam_pose_offset"], num_poses, to_towards=max_towards),
+    # Trajectory 3
+    cam_trajectory("From last pose of trajectory 1, towards the sphere of points, parallel to trajectory 2",
+                   default_parameters["cam_pose_offset"], num_poses, from_sideways=max_sideways, to_sideways=max_sideways, to_towards=max_towards),
+    # Trajectory 4
+    cam_trajectory("From 1st cam, describing circle (while facing the sphere of points) until intersecting with trajectory 3",
+                   default_parameters["cam_pose_offset"], num_poses, to_sideways=max_sideways, angle_until_sideways=True)
+]
 
-def test2(max_sideways=12., max_towards=12., max_angle=None, num_poses=40):
+def test_1and2(trajectories, filename="test_1and2.mat"):
     """
-    Effect of (2nd) camera configurations.
+    Effect of (2nd) camera configurations. (Test 2)
+    & 
+    Effect of 3D point positions. (Test 1)
     
-    "max_sideways" determines the maximum 'sideway' movement of the second camera.
-    "max_towards" determines the maximum 'towards' movement of the second camera.
-    "max_angle" determines the maximum Y rotation of the second camera,
-        describing part of a circle around the origin.
-        If this parameter is set to None,
-        the angle is determined by the intersection of the circle with the plane at X="max_sideways".
-    Each trajectory/path consists of "num_poses" nodes.
+    A list of 2nd cam trajectories "trajectories" should be provided,
+    of which each item is generated by "cam_trajectory()".
+    
+    Test results are saved to a MATLAB-file with filename "filename".
+    Relevant output variables of Test 2 include:
+    - "err3D_mean_summary", "err3D_median_summary" : 3D error dist for each pose of each traj
+    - "err2D_mean_summary", "err2D_median_summary" : 2D reproj error dist for each pose of each traj
+    - "false_pos_summary", "false_neg_summary" : ratio of false positives/negatives, refering to triangl method's status-values
+    - "units" : first three elems describe each dimension of the previously mentioned variables
+    Relevant output variables of Test 1 include:
+    - "p_err3D_mean_summary", "p_err3D_median_summary" : 3D error dist for each point, only for last pose of traj
+    - "p_err3Dv_mean_summary", "p_err3Dv_covar_summary" : 3D error vect's mean vect and covar matrix for each point, only for last pose of traj
+    - "units" : all elems except 2nd describe each dimension of the previously mentioned variables
     """
     params = dict(default_parameters)
     points_3D, cam1, cam2 = data_from_parameters(params)
+    num_poses = len(trajectories[0]["sideways_values"])
     
-    if max_angle == None:
-        max_angle = asin(max_sideways / params["cam_pose_offset"])
-    
-    is_inside_view = [True]
-    traj_description = []
-    num_trajectories = 4
     err3D_mean_summary, err3D_median_summary, err2D_mean_summary, err2D_median_summary, false_pos_summary, false_neg_summary = \
-            np.zeros((6, num_trajectories, num_poses, len(triangl_methods)))
+            np.zeros((6, len(trajectories), num_poses, len(triangl_methods)))
+    p_err3D_mean_summary, p_err3D_median_summary = \
+            np.zeros((2, len(trajectories), len(triangl_methods), len(points_3D)))
+    p_err3Dv_mean_summary = np.zeros((len(trajectories), len(triangl_methods), len(points_3D), 3))
+    p_err3Dv_covar_summary = np.zeros((len(trajectories), len(triangl_methods), len(points_3D), 3, 3))
     
-    def execute_pose_config(ptci, pci, sideways, towards, angle):
-        """
-        "ptci": pose trajectory config iteration variable
-        "pci": pose config iteration variable
-        """
+    is_inside_view = True
+    
+    for ptci, trajectory in enumerate(trajectories):
+        print "Performing trajectory id", ptci, "..."
         
-        cam2.camera_pose(params["cam_pose_offset"], sideways, towards, angle)
-        cam2.project_points(points_3D)
-        
-        errs3D, errs2D, statuses = [], [], []
-        for ti in range(len(triangl_methods)):
-            errs3D.append([])
-            errs2D.append([])
-            statuses.append([])
-        
-        reset_random()
-        for trial in range(num_trials):
-            cam1.apply_noise(params["cam_noise_sigma"], params["cam_noise_discretized"])
-            cam2.apply_noise(params["cam_noise_sigma"], params["cam_noise_discretized"])
+        for pci, (sideways, towards, angle) in enumerate(zip(
+                trajectory["sideways_values"], trajectory["towards_values"], trajectory["angle_values"] )):
+            cam2.camera_pose(params["cam_pose_offset"], sideways, towards, angle)
+            cam2.project_points(points_3D)
             
-            #np.set_printoptions(threshold=5)
-            #print cam2.points_2D
-            #print np.min(cam2.points_2D[:, 0]), np.max(cam2.points_2D[:, 0]), np.min(cam2.points_2D[:, 1]), np.max(cam2.points_2D[:, 1])
-            #print all(0 <= cam2.points_2D[:, 0]) and all(cam2.points_2D[:, 0] < params["cam_resolution"][0]) and all(0 <= cam2.points_2D[:, 1]) and all(cam2.points_2D[:, 1] < params["cam_resolution"][1])
-            is_inside_view[0] *= (
-                    all(0 <= cam2.points_2D[:, 0]) and all(cam2.points_2D[:, 0] < params["cam_resolution"][0]) and 
-                    all(0 <= cam2.points_2D[:, 1]) and all(cam2.points_2D[:, 1] < params["cam_resolution"][1]) )
+            errs3D, errs2D, statuses = [], [], []
+            for ti in range(len(triangl_methods)):
+                errs3D.append([])
+                errs2D.append([])
+                statuses.append([])
             
-            u1 = cam1.normalized_points()
-            u2 = cam2.normalized_points()
+            reset_random()
+            for trial in range(num_trials):
+                cam1.apply_noise(params["cam_noise_sigma"], params["cam_noise_discretized"])
+                cam2.apply_noise(params["cam_noise_sigma"], params["cam_noise_discretized"])
+                
+                #np.set_printoptions(threshold=5)
+                #print cam2.points_2D
+                #print np.min(cam2.points_2D[:, 0]), np.max(cam2.points_2D[:, 0]), np.min(cam2.points_2D[:, 1]), np.max(cam2.points_2D[:, 1])
+                #print all(0 <= cam2.points_2D[:, 0]) and all(cam2.points_2D[:, 0] < params["cam_resolution"][0]) and all(0 <= cam2.points_2D[:, 1]) and all(cam2.points_2D[:, 1] < params["cam_resolution"][1])
+                is_inside_view *= (
+                        all(0 <= cam2.points_2D[:, 0]) and all(cam2.points_2D[:, 0] < params["cam_resolution"][0]) and 
+                        all(0 <= cam2.points_2D[:, 1]) and all(cam2.points_2D[:, 1] < params["cam_resolution"][1]) )
+                
+                u1 = cam1.normalized_points()
+                u2 = cam2.normalized_points()
+                
+                for ti, triangl_method in enumerate(triangl_methods):
+                    start_timer()
+                    points_3D_calc, status = triangl_method(u1, cam1.P, u2, cam2.P)
+                    stop_timer()
+                    errs3D[ti].append(error_vectors_3D(points_3D, points_3D_calc))
+                    errs2D[ti] += error_vectors_2D(points_3D_calc, cam1, cam2)
+                    statuses[ti].append(status)
             
-            for ti, triangl_method in enumerate(triangl_methods):
-                start_timer()
-                points_3D_calc, status = triangl_method(u1, cam1.P, u2, cam2.P)
-                stop_timer()
-                errs3D[ti].append(errors_3D(points_3D, points_3D_calc))
-                errs2D[ti] += errors_2D(points_3D_calc, cam1, cam2)
-                statuses[ti].append(status)
-        
-        for ti in range(len(triangl_methods)):
-            err3D_mean_summary[ptci, pci, ti], err3D_median_summary[ptci, pci, ti] = \
-                    error_rms(*errs3D[ti])
-            err2D_mean_summary[ptci, pci, ti], err2D_median_summary[ptci, pci, ti] = \
-                    error_rms(*errs2D[ti])
-            false_pos_summary[ptci, pci, ti], false_neg_summary[ptci, pci, ti] = \
-                    robustness_stat(errs3D[ti], statuses[ti])
+            for ti in range(len(triangl_methods)):
+                err3D_mean_summary[ptci, pci, ti], err3D_median_summary[ptci, pci, ti], errors = \
+                        error_rms(errs3D[ti])
+                err2D_mean_summary[ptci, pci, ti], err2D_median_summary[ptci, pci, ti], _ = \
+                        error_rms(errs2D[ti])
+                false_pos_summary[ptci, pci, ti], false_neg_summary[ptci, pci, ti] = \
+                        robustness_stat(errors, statuses[ti])
+                
+                if pci == num_poses - 1:    # last pose
+                    errors_partitioned = np.array(errs3D[ti])
+                    p_err3D_mean_summary[ptci, ti], p_err3D_median_summary[ptci, ti] = \
+                            zip(*map(error_rms, [errors_partitioned[:, i, :] for i in range(len(points_3D))]))[:2]
+                    p_err3Dv_mean_summary[ptci, ti], p_err3Dv_covar_summary[ptci, ti] = \
+                            vector_stat(errors_partitioned)
     
-    sideways_values = np.linspace(0, max_sideways, num_poses)
-    towards_values = np.linspace(0, max_towards, num_poses)
-    angle_values = np.linspace(0, max_angle, num_poses)
-    
-    # Trajectory 1:
-    traj_description.append("From 1st cam, to sideways")
-    for pci, (sideways) in enumerate(sideways_values):
-        execute_pose_config(0, pci, sideways, 0., 0.)
-    
-    # Trajectory 2:
-    traj_description.append("From 1st cam, towards the sphere of points")
-    for pci, (towards) in enumerate(towards_values):
-        execute_pose_config(1, pci, 0., towards, 0.)
-    
-    # Trajectory 3:
-    traj_description.append("From last pose of trajectory 1, towards the sphere of points, parallel to trajectory 2")
-    for pci, (towards) in enumerate(towards_values):
-        execute_pose_config(2, pci, sideways_values[-1], towards, 0.)
-    
-    # Trajectory 4:
-    traj_description.append("From 1st cam, describing circle (while facing the sphere of points) until intersecting with trajectory 3")
-    sideways_values = params["cam_pose_offset"] * np.sin(angle_values)
-    towards_values = params["cam_pose_offset"] * (1 - np.cos(angle_values))
-    for pci, (sideways, towards, angle) in enumerate(zip(sideways_values, towards_values, angle_values)):
-        execute_pose_config(3, pci, sideways, towards, angle)
-    
-    if not is_inside_view[0]:
+    if not is_inside_view:
         print "Warning: some points fell out of view."
     
     variables = {
@@ -415,22 +470,135 @@ def test2(max_sideways=12., max_towards=12., max_angle=None, num_poses=40):
             "err2D_median_summary"  : err2D_median_summary,
             "false_pos_summary"     : false_pos_summary,
             "false_neg_summary"     : false_neg_summary,
+            "p_err3D_mean_summary"  : p_err3D_mean_summary,
+            "p_err3D_median_summary": p_err3D_median_summary,
+            "p_err3Dv_mean_summary" : p_err3Dv_mean_summary,
+            "p_err3Dv_covar_summary": p_err3Dv_covar_summary,
+            "units"             : ["trajectory id", "node in a trajectory", "triangulation method", "point index"],
+            "trajectories"      : trajectories,
             "triangl_methods"   : [m.func_name for m in triangl_methods],
-            "traj_description"  : traj_description,
-            "units"             : ["trajectory id", "node in a trajectory", "triangulation method"],
+            "points_3D"             : points_3D,
             "robustness_thresh_max" : robustness_thresh_max,
             "robustness_thresh_min" : robustness_thresh_min,
             "num_trials"            : num_trials,
             "rseed"                 : rseed,
             "default_parameters"    : default_parameters,
-            "parameters"        : {"max_sideways": max_sideways, "max_towards": max_towards, "max_angle": max_angle, "num_poses": num_poses} }
-    sio.savemat("test2.mat", variables)
+            "num_poses"             : num_poses,
+            "max_sideways"          : max_sideways,
+            "max_towards"           : max_towards }
+    sio.savemat(filename, variables)
 
-def test3():
+def test_3(trajectories, max_noise_sigma=4., num_noise_tests=40, filename="test_3.mat"):
     """
-    Effect of noise (models).
+    Effect of noise (models). (Test 3)
+    
+    The following image-points perturbations are used:
+    - Additive gaussian noise
+    - Additive gaussian noise + discretization
+    - Additive gaussian noise + discretization + radial distortion
+    These tests will be executed for each last pose of "trajectories".
+    
+    "num_noise_tests" tests will be performed of normal distributed noise
+    with sigma varying from 0 to "max_noise_sigma".
+    
+    Test results are saved to a MATLAB-file with filename "filename".
+    Relevant output variables of Test 3 include:
+    - "err3D_mean_summary", "err3D_median_summary" : 3D error dist for each pose of each traj
+    - "err2D_mean_summary", "err2D_median_summary" : 2D reproj error dist for each pose of each traj
+    - "false_pos_summary", "false_neg_summary" : ratio of false positives/negatives, refering to triangl method's status-values
+    - "units" : the elems describe each dimension of the previously mentioned variables
     """
-    pass
+    params = dict(default_parameters)
+    points_3D, cam1, cam2 = data_from_parameters(params)
+    
+    num_noise_types = 3
+    err3D_mean_summary, err3D_median_summary, err2D_mean_summary, err2D_median_summary, false_pos_summary, false_neg_summary = \
+            np.zeros((6, len(trajectories), num_noise_types, num_noise_tests, len(triangl_methods)))
+    
+    noise_sigma_values = np.linspace(0, max_noise_sigma, num_noise_tests)
+    is_inside_view = True
+    
+    for ptci, trajectory in enumerate(trajectories):
+        cam2.camera_pose(    # take last pose of each trajectory
+                params["cam_pose_offset"],
+                trajectory["sideways_values"][-1], trajectory["towards_values"][-1], trajectory["angle_values"][-1] )
+        
+        for ntyi in range(num_noise_types):
+            print "Performing noise type id", ntyi, "..."
+            
+            if ntyi == 0:      # Additive gaussian noise
+                noise_discretized = False
+                cam_k1 = 0.
+            elif ntyi == 1:    # Additive gaussian noise + discretization
+                noise_discretized = True
+                cam_k1 = 0.
+            elif ntyi == 2:    # Additive gaussian noise + discretization + radial distortion
+                noise_discretized = True
+                cam_k1 = params["cam_k1"]
+            
+            for cam in (cam1, cam2):
+                cam.camera_intrinsics(params["cam_resolution"], cam_k1)
+                cam.project_points(points_3D)
+            
+            for nti, noise_sigma in enumerate(noise_sigma_values):
+                errs3D, errs2D, statuses = [], [], []
+                for ti in range(len(triangl_methods)):
+                    errs3D.append([])
+                    errs2D.append([])
+                    statuses.append([])
+            
+                reset_random()
+                for trial in range(num_trials):
+                    cam1.apply_noise(noise_sigma, noise_discretized)
+                    cam2.apply_noise(noise_sigma, noise_discretized)
+                    
+                    is_inside_view *= (
+                            all(0 <= cam2.points_2D[:, 0]) and all(cam2.points_2D[:, 0] < params["cam_resolution"][0]) and 
+                            all(0 <= cam2.points_2D[:, 1]) and all(cam2.points_2D[:, 1] < params["cam_resolution"][1]) )
+                    
+                    u1 = cam1.normalized_points()
+                    u2 = cam2.normalized_points()
+                
+                    for ti, triangl_method in enumerate(triangl_methods):
+                        start_timer()
+                        points_3D_calc, status = triangl_method(u1, cam1.P, u2, cam2.P)
+                        stop_timer()
+                        errs3D[ti].append(error_vectors_3D(points_3D, points_3D_calc))
+                        errs2D[ti] += error_vectors_2D(points_3D_calc, cam1, cam2)
+                        statuses[ti].append(status)
+                
+                for ti in range(len(triangl_methods)):
+                    err3D_mean_summary[ptci, ntyi, nti, ti], err3D_median_summary[ptci, ntyi, nti, ti], errors = \
+                            error_rms(errs3D[ti])
+                    err2D_mean_summary[ptci, ntyi, nti, ti], err2D_median_summary[ptci, ntyi, nti, ti], _ = \
+                            error_rms(errs2D[ti])
+                    false_pos_summary[ptci, ntyi, nti, ti], false_neg_summary[ptci, ntyi, nti, ti] = \
+                            robustness_stat(errors, statuses[ti])
+    
+    if not is_inside_view:
+        print "Warning: some points fell out of view."
+    
+    variables = {
+            "err3D_mean_summary"    : err3D_mean_summary,
+            "err3D_median_summary"  : err3D_median_summary,
+            "err2D_mean_summary"    : err2D_mean_summary,
+            "err2D_median_summary"  : err2D_median_summary,
+            "false_pos_summary"     : false_pos_summary,
+            "false_neg_summary"     : false_neg_summary,
+            "units"             : ["id of last pose's trajectory", "noise type id", "noise sigma id", "triangulation method"],
+            "trajectories"      : trajectories,
+            "noise_type_descr"  : ["Add. gauss. noise", "Add. gauss. noise + discret.", "Add. gauss. noise + discret. + rad. distort. (barrel)"],
+            "noise_sigma_values": noise_sigma_values,
+            "triangl_methods"   : [m.func_name for m in triangl_methods],
+            "points_3D"             : points_3D,
+            "robustness_thresh_max" : robustness_thresh_max,
+            "robustness_thresh_min" : robustness_thresh_min,
+            "num_trials"            : num_trials,
+            "rseed"                 : rseed,
+            "default_parameters"    : default_parameters,
+            "num_noise_tests"       : num_noise_tests,
+            "max_noise_sigma"       : max_noise_sigma }
+    sio.savemat(filename, variables)
 
 
 
@@ -449,9 +617,13 @@ def print_timer():
 def main():
     rstate = random.get_state()
     reset_random()
-    test1()
-    test2()
-    test3()
+    
+    print "Running tests 1 and 2 ..."
+    test_1and2(trajectories)
+    
+    print "Running test 3 ..."
+    test_3(trajectories)
+    
     print_timer()
     random.set_state(rstate)
 
