@@ -116,7 +116,7 @@ end
 %%
 
 triangl_line_styles = {'-', '--', ':', '-.'};
-traj_color_styles = {'b', 'g', 'r', 'c'};
+traj_color_styles = {'b', 'g', 'r', 'c', 'm'};
 
 % 3D Plot by visualizing the trajectories
 
@@ -125,13 +125,16 @@ clf
 
 traj_x = zeros(num_poses, num_traj);
 traj_z = zeros(num_poses, num_traj);
+hold on
 for i = 1 : num_traj
     traj_x(:, i) = trajectories{i}.sideways_values;
-    traj_z(:, i) = trajectories{i}.towards_values - default_parameters.cam_pose_offset;
-    if strcmp(trajectories{i}.traj_descr, 'From 1st cam, describing circle (while facing the sphere of points) until intersecting with trajectory 3')
+    traj_z(:, i) = trajectories{i}.towards_values - default_params.cam_pose_offset;
+    if strcmp(trajectories{i}.traj_descr, 'From 1st cam, describing circle (while facing the sphere of points) until intersecting with trajectory 3') || ...
+            strcmp(trajectories{i}.traj_descr, 'From last pose of trajectory 4, describing circle (while facing the sphere of points) until 90 degrees')
         plot3(traj_x(:, i), traj_z(:, i), min(err3D_median_summary(:)) * ones(size(traj_z(:, i))), 'k-')    % projection on the ground
     end
 end
+hold off
 
 hold on
 for i = 1 : num_traj
@@ -146,7 +149,7 @@ set(gca, 'zscale', 'log')
 xlabel('X-coordinate of 2nd camera center')
 ylabel('Z-coordinate of 2nd camera center')
 zlabel('Root Median Squared 3D error')
-legend(['Projection of 4th trajectory on the ground'; l(:)])
+legend(['Projection of 4th trajectory on the ground'; 'Projection of 5th trajectory on the ground'; l(:)])
 title(strjoin(t, ' \n'))
 
 saveas(gcf, 'figures/test2_err3D_3Dplot.pdf')

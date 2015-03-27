@@ -11,11 +11,12 @@ from math import degrees, pi
 import numpy as np
 import cv2
 
-import sys; sys.path.append("../../PythonLibraries")
+import sys; sys.path.append(os.path.join("..", "..", "PythonLibraries"))
 import transforms as trfm
 import cv2_helpers as cvh
 from cv2_helpers import rgb, format3DVector
 from triangulation import iterative_LS_triangulation
+from blender_tools import print_pose
 
 
 
@@ -292,6 +293,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
             print "Selected", len(self.points[0]), "pairs of matches."
     
     # Execute the manual matching
+    nonplanar_left, nonplanar_right = list(nonplanar_left), list(nonplanar_right)
     ManualMatcher("Select match-points of non-planar objects", [img_left, img_right], [nonplanar_left, nonplanar_right]).run()
     num_nonplanar = len(nonplanar_left)
     has_nonplanar = (num_nonplanar > 0)
@@ -540,10 +542,6 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     
     print "Camera poses:"
     if has_nonplanar:
-        def print_pose(rvec, tvec):
-            ax, an = trfm.axis_and_angle_from_rvec(-rvec)
-            print "axis, angle = \\\n", list(ax.reshape(-1)), ",", an    # R
-            print "pos = \\\n", list(-cvh.Rodrigues(-rvec).dot(tvec).reshape(-1))    # t
         print "Left"
         print_pose(rvec_left, tvec_left)
         print

@@ -87,7 +87,9 @@ def axis_and_angle_from_rvec(rvec):
     angle = LA.norm(rvec)
     
     sign = np.sign(rvec[abs(rvec).argmax()])
-    axis = sign * rvec / angle    # make the dominant axis positive
+    axis = sign * rvec    # make the dominant axis positive
+    if angle > 0:
+        axis /= angle
     angle *= sign
 
     if abs(angle) > pi:    # abs(angle) should be <= pi

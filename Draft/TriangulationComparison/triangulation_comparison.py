@@ -8,6 +8,7 @@ import cv2
 
 import sys; sys.path.append("../PythonLibraries")
 import transforms as trfm
+import dataset_tools
 import triangulation
 
 
@@ -45,6 +46,7 @@ def infinite_3D_points(r, max_angle, x_on=True, y_on=True):
                                       if (x*x + y*y) <= r*r ])
     return points
 
+'''   DEPRECATED
 def scene_3D_points(r=1., filename="scene_3D_points.mat"):
     """
     Load 3D coordinates of points from a MATLAB file given by filename "filename".
@@ -58,6 +60,22 @@ def scene_3D_points(r=1., filename="scene_3D_points.mat"):
     points = sio.loadmat(filename)["scene_3D_points"]
     if points.shape[1] == 3:
         points = np.concatenate((points, np.ones((len(points), 1))), axis=1)
+    
+    points[:, 0:3] *= r
+    
+    return points
+'''
+
+def scene_3D_points(r=1., filename="scene_3D_points.pcd"):
+    """
+    Load 3D coordinates of points from a PointCloud .pcd-file given by filename "filename".
+    Use "r" as geometry scaling factor.
+    
+    The points are assumed to be confined in a cube with edges of length 2.
+    """
+    
+    points = dataset_tools.load_3D_points_from_pcd_file(filename)[0]    # only load verts, not colors
+    points = np.concatenate((points, np.ones((len(points), 1))), axis=1)
     
     points[:, 0:3] *= r
     
@@ -242,8 +260,8 @@ def robustness_stat(errors, statuses):
 
 """ Default scenario parameters, generators and random seeds """
 
-default_parameters = {
-    "3D_points_source"      : "finite",
+default_params = {
+    "3D_points_source"      : "finite",    # "finite", "infinite", or "scene"
     "3D_points_r"           : 4,
     "3D_points_max_angle"   : pi / 4,
     "3D_points_x_on"        : True,
@@ -301,7 +319,7 @@ def data_from_parameters(params):
 
 def cam_trajectory(traj_descr, cam_pose_offset, num_poses,
                    from_sideways=0., to_sideways=0., from_towards=0., to_towards=0., from_angle=0., to_angle=0.,
-                   angle_until_sideways=False):
+                   angle_by_sideways=False):
     """
     A trajectory description "traj_descr", as well as the camera -Z offset "cam_pose_offset" should be provided.
     Each trajectory/path consists of "num_poses" nodes.
@@ -309,12 +327,14 @@ def cam_trajectory(traj_descr, cam_pose_offset, num_poses,
     All "from_*" parameters result in a linear interpolation to the corresponding "to_*" parameters.
     See "Camera.camera_pose()" for the documentation of the "*" parameters.
     
-    If "angle_until_sideways" is set to True,
+    If "angle_by_sideways" is set to True,
         the "to_angle" parameter is determined by the intersection of the XZ circle centered at the origin
-        with the plane at X="to_sideways".
+        with the plane at X="to_sideways",
+        similar for the "from_angle" parameter (with the plane at X="from_sideways".
     """
     
-    if angle_until_sideways:
+    if angle_by_sideways:
+        from_angle = asin(from_sideways / cam_pose_offset)
         to_angle = asin(to_sideways / cam_pose_offset)
         angle_values = np.linspace(from_angle, to_angle, num_poses)
         sideways_values = cam_pose_offset * np.sin(angle_values)
@@ -362,16 +382,19 @@ max_towards = 12.
 trajectories = [    # trajectories of 2nd cam
     # Trajectory 1
     cam_trajectory("From 1st cam, to sideways",
-                   default_parameters["cam_pose_offset"], num_poses, to_sideways=max_sideways),
+                   default_params["cam_pose_offset"], num_poses, to_sideways=max_sideways),
     # Trajectory 2
     cam_trajectory("From 1st cam, towards the sphere of points",
-                   default_parameters["cam_pose_offset"], num_poses, to_towards=max_towards),
+                   default_params["cam_pose_offset"], num_poses, to_towards=max_towards),
     # Trajectory 3
     cam_trajectory("From last pose of trajectory 1, towards the sphere of points, parallel to trajectory 2",
-                   default_parameters["cam_pose_offset"], num_poses, from_sideways=max_sideways, to_sideways=max_sideways, to_towards=max_towards),
+                   default_params["cam_pose_offset"], num_poses, from_sideways=max_sideways, to_sideways=max_sideways, to_towards=max_towards),
     # Trajectory 4
     cam_trajectory("From 1st cam, describing circle (while facing the sphere of points) until intersecting with trajectory 3",
-                   default_parameters["cam_pose_offset"], num_poses, to_sideways=max_sideways, angle_until_sideways=True)
+                   default_params["cam_pose_offset"], num_poses, to_sideways=max_sideways, angle_by_sideways=True),
+    # Trajectory 5
+    cam_trajectory("From last pose of trajectory 4, describing circle (while facing the sphere of points) until 90 degrees",
+                   default_params["cam_pose_offset"], num_poses, from_sideways=max_sideways, to_sideways=default_params["cam_pose_offset"], angle_by_sideways=True)
 ]
 
 def test_1and2(trajectories, filename="test_1and2.mat"):
@@ -394,7 +417,7 @@ def test_1and2(trajectories, filename="test_1and2.mat"):
     - "p_err3Dv_mean_summary", "p_err3Dv_covar_summary" : 3D error vect's mean vect and covar matrix for each point, only for last pose of traj
     - "units" : all elems except 2nd describe each dimension of the previously mentioned variables
     """
-    params = dict(default_parameters)
+    params = dict(default_params)
     points_3D, cam1, cam2 = data_from_parameters(params)
     num_poses = len(trajectories[0]["sideways_values"])
     
@@ -482,7 +505,7 @@ def test_1and2(trajectories, filename="test_1and2.mat"):
             "robustness_thresh_min" : robustness_thresh_min,
             "num_trials"            : num_trials,
             "rseed"                 : rseed,
-            "default_parameters"    : default_parameters,
+            "default_params"        : default_params,
             "num_poses"             : num_poses,
             "max_sideways"          : max_sideways,
             "max_towards"           : max_towards }
@@ -508,7 +531,7 @@ def test_3(trajectories, max_noise_sigma=4., num_noise_tests=40, filename="test_
     - "false_pos_summary", "false_neg_summary" : ratio of false positives/negatives, refering to triangl method's status-values
     - "units" : the elems describe each dimension of the previously mentioned variables
     """
-    params = dict(default_parameters)
+    params = dict(default_params)
     points_3D, cam1, cam2 = data_from_parameters(params)
     
     num_noise_types = 3
@@ -595,7 +618,7 @@ def test_3(trajectories, max_noise_sigma=4., num_noise_tests=40, filename="test_
             "robustness_thresh_min" : robustness_thresh_min,
             "num_trials"            : num_trials,
             "rseed"                 : rseed,
-            "default_parameters"    : default_parameters,
+            "default_params"        : default_params,
             "num_noise_tests"       : num_noise_tests,
             "max_noise_sigma"       : max_noise_sigma }
     sio.savemat(filename, variables)

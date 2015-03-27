@@ -5,7 +5,7 @@ import numpy as np
 import glob
 import cv2
 
-import sys; sys.path.append("../../PythonLibraries")
+import sys; sys.path.append(os.path.join("..", "..", "PythonLibraries"))
 import cv2_helpers as cvh
 from cv2_helpers import rgb
 
@@ -57,7 +57,7 @@ def main():
     objp = prepare_object_points(boardSize)
     
     cameraMatrix, distCoeffs, imageSize = \
-            load_camera_intrinsics("camera_intrinsics.txt")
+            load_camera_intrinsics(os.path.join("..", "Datasets", "Webcam", "camera_intrinsics.txt"))
     
     
     # Initiate 2d 3d arrays
@@ -67,7 +67,7 @@ def main():
     
     # Select working (or 'testing') set
     from glob import glob
-    images = sorted(glob(os.path.join("captures2", "*.jpeg")))
+    images = sorted(glob(os.path.join("..", "Datasets", "Webcam", "captures2", "*.jpeg")))
     
     
     def main_loop(left_points,

@@ -6,7 +6,7 @@ import numpy as np
 import glob
 import cv2
 
-import sys; sys.path.append("../../PythonLibraries")
+import sys; sys.path.append(os.path.join("..", "..", "PythonLibraries"))
 import cv2_helpers as cvh
 from cv2_helpers import rgb
 import transforms as trfm
@@ -594,14 +594,14 @@ def main():
     color_palette, color_palette_size = prepare_color_palette(2, 3, 4)    # used to identify 3D point group ids
     
     cameraMatrix, distCoeffs, imageSize = \
-            load_camera_intrinsics("camera_intrinsics.txt")
+            load_camera_intrinsics(os.path.join("..", "Datasets", "Webcam", "camera_intrinsics.txt"))
     #cameraMatrix, distCoeffs, imageSize = \
-            #load_camera_intrinsics("../../ARDrone2Tests/camera_calibration/live_video/camera_intrinsics_front.txt")
+            #load_camera_intrinsics(os.path.join("..", "..", "ARDrone2Tests", "camera_calibration", "live_video", "camera_intrinsics_front.txt"))
     
     # Select working (or 'testing') set
     from glob import glob
-    images = sorted(glob(os.path.join("captures2", "*.jpeg")))
-    #images = sorted(glob(os.path.join("../../ARDrone2Tests/flying_front/lowres/drone0", "*.jpg")))[68:]
+    images = sorted(glob(os.path.join("..", "Datasets", "Webcam", "captures2", "*.jpeg")))
+    #images = sorted(glob(os.path.join("..", "..", "ARDrone2Tests", "flying_front", "lowres", "drone0", "*.jpg")))[68:]
     
     # Setup some visualization helpers
     composite2D_painter = Composite2DPainter("composite 2D", imageSize)
