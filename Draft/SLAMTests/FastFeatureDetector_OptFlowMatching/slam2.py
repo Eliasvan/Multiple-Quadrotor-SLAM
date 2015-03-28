@@ -377,6 +377,33 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
     print "# points lost because of excessive OF error / # points before: ", len(prev_imgp) - len(new_to_prev_idxs), "/", len(prev_imgp), "=", lost_tracks_ratio
     if lost_tracks_ratio > max_lost_tracks_ratio:    # reject frame
         print "REJECTED: I lost track of all points!\n"
+        #brisk = cv2.BRISK()#ORB()
+        #prev_keyp, prev_descr = brisk.compute(prev_img_gray, [cv2.KeyPoint(p[0], p[1], keypoint_coverage_radius) for p in prev_imgp])
+        #new_imgp = cv2.goodFeaturesToTrack(new_img_gray, len(prev_imgp), corner_quality_level, corner_min_dist).reshape((-1, 2))
+        #new_keyp, new_descr = brisk.compute(new_img_gray, [cv2.KeyPoint(p[0], p[1], keypoint_coverage_radius) for p in new_imgp])
+        ##FLANN_INDEX_KDTREE = 1    # BUG: this enum is missing in the Python OpenCV binding
+        ##index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+        #FLANN_INDEX_LSH = 6
+        #index_params= dict(algorithm = FLANN_INDEX_LSH,
+                   #table_number = 6, # 12
+                   #key_size = 12,     # 20
+                   #multi_probe_level = 1) #2
+        #search_params = dict(checks=50)
+        #flann = cv2.FlannBasedMatcher(index_params, search_params)
+        #matches = flann.knnMatch(prev_descr, new_descr, k=2)
+        ## store all the good matches as per Lowe's ratio test.
+        #print [i for i in matches]
+        #kp1, kp2 = zip(*[(prev_keyp[m.queryIdx].pt, new_keyp[m.trainIdx].pt) for m, n in matches if m.distance < 0.7*n.distance])
+        ##flann = cv2.flann_Index(new_descr, index_params)
+        ##idx2, dist = flann.knnSearch(prev_descr, 2, params = {}) # bug: need to provide empty dict
+        ##mask = dist[:,0] / dist[:,1] < 0.6
+        ##idx1 = np.arange(len(prev_descr))
+        ##matches = np.int32( zip(idx1, idx2[:,0]) )[mask]
+        ##kp1, kp2 = zip(*[(prev_keyp[m.queryIdx].pt, new_keyp[m.trainIdx].pt) for m, n in matches])
+        #print "Trying to recover from lost tracks, using flann matcher..."
+        #while True:
+            #cv2.imgshow("img", cvh.drawKeypointsAndMotion(new_img, kp1, kp2, rgb(0,0,255)))
+            #cv2.waitKey()
         return False, base_imgp, prev_imgp, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr, base_img
     
     # Save matches by idxs
