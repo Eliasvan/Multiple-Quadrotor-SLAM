@@ -7,7 +7,7 @@ import numpy as np
 
 def load_cam_trajectory_TUM(filename):
     """
-    Load ground-truth camera trajectories from file "filename",
+    Load (e.g. ground-truth) camera trajectories from file "filename",
     the format is specified on "http://vision.in.tum.de/data/datasets/rgbd-dataset/file_formats".
     
     Returns the following lists: "timestps", "locations", and "quaternions".
@@ -34,7 +34,7 @@ def load_cam_trajectory_TUM(filename):
 
 def save_cam_trajectory_TUM(filename, timestps, locations, quaternions):
     """
-    Save ground-truth camera trajectories to file "filename",
+    Save (e.g. ground-truth) camera trajectories to file "filename",
     the format is specified on "http://vision.in.tum.de/data/datasets/rgbd-dataset/file_formats".
     """
     
@@ -54,6 +54,7 @@ def load_3D_points_from_pcd_file(filename, use_alpha=False):
     the "colors" (numpy uint8 array) is set to None.
     Otherwise, each color is formatted as (B, G, R), or (B, G, R, A).
     Set "use_alpha" to False to force the (B, G, R) format.
+    "found_alpha" is set to True if an alpha color channel was found.
     
     Note: the only supported header configs (for the listed entries) are:
         FIELDS x y z
@@ -68,7 +69,7 @@ def load_3D_points_from_pcd_file(filename, use_alpha=False):
     """
     
     def float2bgra(f):
-        return map(ord, list(struct.pack('f', f)))
+        return bytearray(struct.pack('f', f))
     
     lines = open(filename, 'r').read().split('\n')
     
@@ -115,15 +116,17 @@ def load_3D_points_from_pcd_file(filename, use_alpha=False):
     
     points = np.array([tuple(map(float, line.split(' '))) for line in lines], dtype=np.float32)
     
+    found_alpha = False
     if use_colors:
-        colors = np.array(map(float2bgra, points[:, -1:]), dtype=np.uint8)    # split each point into color, ...
+        colors = np.array(tuple(map(float2bgra, points[:, -1:])))    # split each point into color, ...
         points = points[:, :-1]    # ... and x, y, z coordinates
+        found_alpha = (colors.shape[1] > 3)
         if not use_alpha:
             colors = colors[:, 0:3]
     else:
         colors = None
     
-    return points, colors
+    return points, colors, found_alpha
 
 def save_3D_points_to_pcd_file(filename, points, colors=None):
     """
@@ -137,11 +140,15 @@ def save_3D_points_to_pcd_file(filename, points, colors=None):
     The two least-significant bits of the alpha values should be 0b01,
     hence the minimum value is 1, and the maximum is 253,
     and the resolution is divided by 4.
+    
+    Note 2: if you want to save to PLY format instead, convert the output file of this function
+    to PLY format with the application "pcd2ply" or "pcl_pcd2ply", included in PointCloudLibrary (pcl):
+    http://pointclouds.org/
     """
     use_alpha = (colors != None and colors.shape[1] == 4)
     
     def bgra2float(bgra):
-        return struct.unpack('f', "".join(map(chr, bgra)))[0]
+        return struct.unpack('f', bytearray(bgra))[0]
     
     def float2string(f):
         return "%.8e" % f    # just enough precision to recover the color afterwards
@@ -166,16 +173,18 @@ def save_3D_points_to_pcd_file(filename, points, colors=None):
     points = points.astype(np.float32)
     
     if colors != None:
+        if colors.dtype != np.uint8:
+            colors = colors.astype(np.uint8)
         if use_alpha:
             # Float32 exponent 0xFF would create NaN/Inf values, while exponent 0x00 could cause denormal values,
-            # so avoid them by ensuring that the last two least-significant bits of alpha is 0b01,
+            # so avoid them by ensuring that the last two least-significant bits of alpha form 0b01,
             # in this way the R, G and B values are not restricted.
             colors[:, 3] &= 0b11111100
             colors[:, 3] |=       0b01
         else:
             alpha = np.empty((len(colors), 1), dtype=np.uint8); alpha.fill(0xFD)
             colors = np.concatenate((colors, alpha), axis=1)    # add the maximum alpha value (= 0xFD)
-        colors = np.array(map(bgra2float, colors), dtype=np.float32).reshape(len(colors), 1)    # convert to floats
+        colors = np.array(tuple(map(bgra2float, colors)), dtype=np.float32).reshape(len(colors), 1)    # convert to floats
         points = np.concatenate((points, colors), axis=1)
     
     data = '\n'.join([' '.join(map(float2string, point)) for point in points])
@@ -193,22 +202,19 @@ except ImportError:
 
 def convert_cam_poses_to_cam_trajectory_TUM(Ps, fps=30):
     """
-    Convert camera pose projection matrices "Ps" to ground-truth camera trajectories,
+    Convert camera pose projection matrices "Ps" to camera trajectories in TUM format,
     the result can be saved with "save_cam_trajectory_TUM()".
     """
     timestps, locations, quaternions = [], [], []
     
     for i, P in enumerate(Ps):
-        # We take the inverse,
-        # to obtain the trfm matrix that projects points from the camera axis-system to the world axis-system
-        M = trfm.P_inv(P)
-        
-        R = cv2.Rodrigues(M[0:3, 0:3])[0]
-        q = list(trfm.quat_from_rvec(R)[0:4, 0])
-        t = list(M[0:3, 3])
+        if P == None:
+            continue
         
         timestps.append(float(i) / fps)
-        locations.append(t)
-        quaternions.append(q)
+        
+        q, t = trfm.pose_TUM_from_P(P)
+        locations.append(list(t.reshape(-1)))
+        quaternions.append(list(q.reshape(-1)))
     
     return timestps, locations, quaternions

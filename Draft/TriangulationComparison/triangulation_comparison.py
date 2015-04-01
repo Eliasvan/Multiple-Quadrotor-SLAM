@@ -75,9 +75,9 @@ def scene_3D_points(r=1., filename="scene_3D_points.pcd"):
     """
     
     points = dataset_tools.load_3D_points_from_pcd_file(filename)[0]    # only load verts, not colors
-    points = np.concatenate((points, np.ones((len(points), 1))), axis=1)
+    points *= r
     
-    points[:, 0:3] *= r
+    points = np.concatenate((points, np.ones((len(points), 1))), axis=1)    # to homogeneous coordinates
     
     return points
 

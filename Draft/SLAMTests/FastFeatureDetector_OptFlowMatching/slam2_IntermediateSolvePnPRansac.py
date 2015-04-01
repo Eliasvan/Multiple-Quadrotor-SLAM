@@ -140,7 +140,7 @@ def draw_axis_system(img, rvec, tvec, cameraMatrix, distCoeffs):
                                   [0., 0., 4.] ])    # Z-axis (blue)
     imgp_reproj, jacob = cv2.projectPoints(
             axis_system_objp, rvec, tvec, cameraMatrix, distCoeffs )
-    origin, xAxis, yAxis, zAxis = np.rint(imgp_reproj.reshape(-1, 2)).astype(int)    # round to nearest int
+    origin, xAxis, yAxis, zAxis = np.rint(imgp_reproj.reshape(-1, 2)).astype(int32)    # round to nearest int
     if not (0 <= origin[0] < img.shape[1] and 0 <= origin[1] < img.shape[0]):    # projected origin lies out of the image
         return img    # so don't draw axis-system
     cvh.line(img, origin, xAxis, rgb(255,0,0), thickness=2, lineType=cv2.CV_AA)
@@ -271,7 +271,7 @@ class Composite3DPainter:
                 draw_axis_system(self.img, cvh.Rodrigues(self.P[0:3, 0:3]), self.P[0:3, 3], self.K, None)
             
             # Draw 3D points
-            objp_proj, objp_visible = trfm.project_points(objp, self.P, self.K)
+            objp_proj, objp_visible = trfm.project_points(objp, self.P, self.K, self.img.shape)
             objp_visible = set(np.where(objp_visible)[0])
             current_idxs = set(imgp_to_objp_idxs[np.array(tuple(triangl_idxs))]) & objp_visible
             done_idxs = np.array(tuple(objp_visible - current_idxs), dtype=int)
@@ -284,12 +284,12 @@ class Composite3DPainter:
                 cvh.circle(self.img, opp[0:2], 2, color, thickness=-1)    # draw point, small radius
             
             # Draw camera trajectory
-            cams_pos_proj, cams_pos_visible = trfm.project_points(self.cams_pos, self.P, self.K)
+            cams_pos_proj, cams_pos_visible = trfm.project_points(self.cams_pos, self.P, self.K, self.img.shape)
             cams_pos_proj = cams_pos_proj[np.where(cams_pos_visible)[0]]
             color = rgb(0,0,0)
             for p1, p2 in zip(cams_pos_proj[:-1], cams_pos_proj[1:]):
                 cvh.line(self.img, p1, p2, color, thickness=2)    # interconnect trajectory points
-            cams_pos_keyfr_proj, cams_pos_keyfr_visible = trfm.project_points(self.cams_pos_keyfr, self.P, self.K)
+            cams_pos_keyfr_proj, cams_pos_keyfr_visible = trfm.project_points(self.cams_pos_keyfr, self.P, self.K, self.img.shape)
             cams_pos_keyfr_proj = cams_pos_keyfr_proj[np.where(cams_pos_keyfr_visible)[0]]
             color = rgb(255,255,255)
             for p in cams_pos_proj:
@@ -300,14 +300,14 @@ class Composite3DPainter:
             # Draw current camera axis system
             if status:
                 (cam_origin, cam_xAxis, cam_yAxis, cam_zAxis), cam_visible = \
-                        trfm.project_points(cam_axissys_objp, self.P, self.K)
+                        trfm.project_points(cam_axissys_objp, self.P, self.K, self.img.shape)
                 if cam_visible.sum() == len(cam_visible):    # only draw axis-system if it's entirely in sight
                     cvh.line(self.img, cam_origin, cam_xAxis, rgb(255,0,0), lineType=cv2.CV_AA)
                     cvh.line(self.img, cam_origin, cam_yAxis, rgb(0,255,0), lineType=cv2.CV_AA)
                     cvh.line(self.img, cam_origin, cam_zAxis, rgb(0,0,255), lineType=cv2.CV_AA)
                     cvh.circle(self.img, cam_zAxis, 3, rgb(0,0,255))    # small dot to highlight cam Z axis
             else:
-                last_cam_origin, last_cam_visible = trfm.project_points(self.cams_pos[-1:], self.P, self.K)
+                last_cam_origin, last_cam_visible = trfm.project_points(self.cams_pos[-1:], self.P, self.K, self.img.shape)
                 if last_cam_visible[0]:    # only draw if in sight
                     cvh.putText(self.img, '?', last_cam_origin[0] - (11, 11), fontFace, fontScale * 4, rgb(255,0,0))    # draw '?' because it's a bad frame
             

@@ -1,9 +1,10 @@
 import os
-from math import *
+from math import radians
 import numpy as np
 
 try:
     import bpy    # tested in Blender v2.69
+    import bmesh
     from mathutils import Quaternion
 except ImportError:
     print ("Warning: can't load Blender modules required for most functions of \"blender_tools\" module.")
@@ -20,10 +21,10 @@ def get_objects(by_selection=False, name_starts_with="", name_ends_with=""):
     The entries are sorted by object-name.
     
     "by_selection" :
-        (optional) if True, only the selected objects are considered,
+        if True, only the selected objects are considered,
         otherwise the objects of the current scene are considered
-    "name_starts_with" : (optional) prefix of object name
-    "name_ends_with" : (optional) suffix of object name
+    "name_starts_with" : prefix of object name
+    "name_ends_with" : suffix of object name
     """
     
     if by_selection:
@@ -40,8 +41,8 @@ def object_name_from_filename(filename, name_prefix="", strip_file_extension=Tru
     Create an object-name corresponding with the filename "filename" of the file containing
     the data to represent the object.
     
-    "name_prefix" : (optional) prefix
-    "strip_file_extension" : (optional) if True, omit the file-extension in the object-name
+    "name_prefix" : prefix for the object-name
+    "strip_file_extension" : if True, omit the file-extension in the object-name
     """
     name = bpy.path.basename(filename)
     
@@ -90,6 +91,7 @@ def create_camera_pose(name, axis, angle, pos):
     if name in bpy.data.objects and bpy.data.objects[name].type == "CAMERA":
         ob = bpy.data.objects[name]
     else:
+        if bpy.context.mode != "OBJECT": bpy.ops.object.mode_set()    # switch to object mode
         bpy.ops.object.camera_add()
         ob = bpy.context.object
         ob.name = name
@@ -132,22 +134,30 @@ def extract_current_pose():
 
 def create_cam_trajectory(name,
                           locations, quaternions,
-                          start_frame=1, framenrs=None):
+                          start_frame=1, framenrs=None,
+                          no_keyframe_highlighting=False):
     """
     "name" : name of Camera to be created
     "locations" : list of cam center positions for each trajectory node
     "quaternions" : list of cam orientation (quaternion (qx, qy, qz, qw)) for each trajectory node
-    "start_frame" : (optional) number of the start frame
-    "framenrs" : (optional) list of frame numbers for each trajectory node (should be in increasing order)
+    "start_frame" : start frame of the trajectory
+    "framenrs" : list of frame numbers for each trajectory node (should be in increasing order)
+    "no_keyframe_highlighting" : if True, don't show framenumbers for each keyframe along trajectory
     """
-    frame_current_backup = bpy.context.scene.frame_current    # backup the current framenr
+    
+    # Backup the current framenr and active layers
+    frame_current_backup = bpy.context.scene.frame_current
+    layers_backup = tuple(bpy.context.scene.layers)
     
     # Create the camera
+    if bpy.context.mode != "OBJECT": bpy.ops.object.mode_set()    # switch to object mode
     if name in bpy.data.objects and bpy.data.objects[name].type == "CAMERA":
         ob = bpy.data.objects[name]
         bpy.ops.object.select_all(action="DESELECT")
         ob.select = True
         bpy.context.scene.objects.active = ob
+        bpy.context.object.animation_data_clear()    # clear all previous keyframes
+        bpy.context.scene.layers = bpy.context.object.layers    # only activate object's layers to insert keyframes
     else:
         bpy.ops.object.camera_add()
         ob = bpy.context.object
@@ -157,7 +167,7 @@ def create_cam_trajectory(name,
     
     # Create path of the camera
     for i, (location, quaternion) in enumerate(zip(locations, quaternions)):
-        bpy.context.scene.frame_current = framenrs[i] if framenrs else i + 1
+        bpy.context.scene.frame_current = framenrs[i] if framenrs != None else i + 1
         
         ob.location = list(location)
         
@@ -170,25 +180,49 @@ def create_cam_trajectory(name,
         bpy.ops.anim.keyframe_insert_menu(type="BUILTIN_KSI_LocRot")
     
     # Visualize path
-    ob.animation_visualization.motion_path.show_keyframe_highlight = bool(framenrs)
-    if framenrs:
+    ob.animation_visualization.motion_path.show_keyframe_highlight = \
+            (framenrs != None and not no_keyframe_highlighting)
+    if framenrs != None:
         bpy.ops.object.paths_calculate(start_frame=framenrs[0], end_frame=framenrs[-1])
     else:
         bpy.ops.object.paths_calculate(start_frame=start_frame, end_frame=start_frame + len(locations))
     
-    bpy.context.scene.frame_current = frame_current_backup    # restore the original framenr
+    # Restore the original framenr and active layers
+    bpy.context.scene.layers = layers_backup
+    bpy.context.scene.frame_current = frame_current_backup
 
-def load_and_create_cam_trajectory(filename, name_prefix="", strip_file_extension=False):
+def load_and_create_cam_trajectory(filename, name_prefix="", strip_file_extension=False,
+                                   start_frame=1, fps="blender", no_keyframe_highlighting=True):
     """
     Load a camera trajectory (in the TUM format, see "dataset_tools" module for more info)
     with filename "filename", and create it in Blender.
     
     "name_prefix", "strip_file_extension" : see documentation of "object_name_from_filename()"
+    "start_frame" : start frame of the trajectory
+    "fps" : should be one of the following:
+            - "blender" : infer the fps from Blender's scene "fps" property
+            - "data" : infer the fps from the data (using minimum delta time)
+            - an integer indicating the data's fps
+    "no_keyframe_highlighting" : if True, don't show framenumbers for each keyframe along trajectory
     """
     
     timestps, locations, quaternions = dataset_tools.load_cam_trajectory_TUM(filename)
+    
+    if len(timestps) == 0:
+        return
+    elif len(timestps) == 1:
+        framenrs = [start_frame]
+    else:
+        timestps = np.array(timestps)
+        if fps == "blender":
+            fps = bpy.context.scene.render.fps
+        elif fps == "data":
+            fps = 1. / np.min(timestps[1:] - timestps[:-1])
+        framenrs = np.rint(start_frame + (timestps - timestps[0]) * float(fps)).astype(int)
+    
     create_cam_trajectory(
-            object_name_from_filename(filename, name_prefix, strip_file_extension), locations, quaternions )
+            object_name_from_filename(filename, name_prefix, strip_file_extension),
+            locations, quaternions, start_frame, framenrs, no_keyframe_highlighting )
 
 
 """ Functions related to 3D geometry """
@@ -209,6 +243,7 @@ def create_mesh(name, coords, connect=False, edges=None):
     
     me = bpy.data.meshes.new(mesh_name)    # create a new mesh
     if name in bpy.data.objects and bpy.data.objects[name].type == "MESH":
+        if bpy.context.mode != "OBJECT": bpy.ops.object.mode_set()    # switch to object mode
         ob = bpy.data.objects[name]
         me_old = ob.data
         ob.data = me
@@ -268,11 +303,13 @@ def extract_points_to_ply_file(filename, by_selection=False, name_starts_with=""
     Note: at least 3 vertices should be extracted (in total).
     """
     
-    # Save current selection
+    # Save current mode and selection
+    mode_backup = bpy.context.mode
     selected_objects_backup = bpy.context.selected_objects
     active_object_backup = bpy.context.active_object
     
     # Select to-be-exported objects
+    if bpy.context.mode != "OBJECT": bpy.ops.object.mode_set()    # switch to object mode
     bpy.ops.object.select_all(action="DESELECT")
     for ob_name, ob in get_objects(by_selection, name_starts_with, name_ends_with):
         ob.select = True
@@ -295,11 +332,12 @@ def extract_points_to_ply_file(filename, by_selection=False, name_starts_with=""
     bpy.ops.export_mesh.ply(filepath=filename, use_normals=False, use_uv_coords=False)    # export to ply-file
     bpy.ops.object.delete(use_global=True)    # remove temporary mesh
     
-    # Restore original selection
+    # Restore original mode and selection
     bpy.ops.object.select_all(action="DESELECT")
     for ob in selected_objects_backup:
         ob.select = True
     bpy.context.scene.objects.active = active_object_backup
+    bpy.ops.object.mode_set(mode_backup)
 
 def extract_points_to_pcd_file(filename, by_selection=False, name_starts_with="", name_ends_with=""):
     """
@@ -308,6 +346,8 @@ def extract_points_to_pcd_file(filename, by_selection=False, name_starts_with=""
     
     "filename" : .pcd-file to save to
     "by_selection", "name_starts_with", "name_ends_with" : see documentation of "get_objects()"
+    
+    Note: currently, colors are not exported.
     """
     
     verts = []
@@ -327,10 +367,38 @@ def import_points_from_pcd_file(filename, name_prefix=""):
     """
     
     # Import point cloud
-    verts, colors = dataset_tools.load_3D_points_from_pcd_file(filename)
+    verts, colors, found_alpha = dataset_tools.load_3D_points_from_pcd_file(filename, use_alpha=True)
     ob = create_mesh(object_name_from_filename(filename, name_prefix), verts)
     
+    # Mark object as a pointcloud
+    ob["is_pointcloud"] = True
+    
+    if colors != None:
+        # Mark object as a colored pointcloud
+        ob["pointcloud_has_rgba"] = True
+        ob.show_transparent = found_alpha    # render alpha channel
+        
+        # Open mesh for editing vertex custom data
+        bm = bmesh.new()
+        bm.from_mesh(ob.data)
+
+        # Create custom data layers, for the vertex color
+        r = bm.verts.layers.float.new('r')
+        g = bm.verts.layers.float.new('g')
+        b = bm.verts.layers.float.new('b')
+        a = bm.verts.layers.float.new('a')
+
+        # Color vertices
+        for vert, color in zip(bm.verts, colors / 255.):
+            vert[b], vert[g], vert[r] = color[0:3]
+            vert[a] = color[3]
+        
+        # Save colors
+        bm.to_mesh(ob.data)
+        del bm
+    
     # Select the generated object
+    if bpy.context.mode != "OBJECT": bpy.ops.object.mode_set()    # switch to object mode
     bpy.ops.object.select_all(action="DESELECT")
     ob.select = True
     bpy.context.scene.objects.active = ob

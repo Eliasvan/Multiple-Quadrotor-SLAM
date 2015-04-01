@@ -153,10 +153,13 @@ def delta_P(P2, P1):
     
     return P
 
-def project_points(points, P, K):
+def project_points(points, P, K, image_size=None, round=True):
     """
     Return the 2D projections of 3D points array via 4x4 P camera projection matrix using 3x3 K camera intrinsics matrix,
-    additionally return a corresponding status vector: 1 if point is in front of camera, otherwise 0.
+    additionally return a corresponding status vector:
+        1 if point is in front of camera and (optional) inside view with size 'image_size' [height, width],
+        otherwise 0.
+    If 'round' is True, the projected points will become (nearest) integers.
     """
     points_nrm = np.empty((len(points), 4))
     points_nrm[:, 0:3] = points
@@ -165,7 +168,18 @@ def project_points(points, P, K):
     points_proj = points_nrm .dot (P[0:3, :].T) .dot (K.T)
     points_proj[:, 0:2] /= points_proj[:, 2:3]
     
-    return np.rint(points_proj[:, 0:2]).astype(int), (points_proj[:, 2] > 0)
+    status = (points_proj[:, 2] > 0)
+    if image_size != None:
+        inside_image = np.logical_and(
+                np.logical_and((0 <= points_proj[:, 0]), (points_proj[:, 0] < image_size[1])),
+                np.logical_and((0 <= points_proj[:, 1]), (points_proj[:, 1] < image_size[0])) )
+        status = np.logical_and(status, inside_image)
+    
+    points_proj = points_proj[:, 0:2]
+    if round:
+        points_proj = np.rint(points_proj).astype(int)
+    
+    return points_proj, status
 
 def projection_depth(points, P):
     """
@@ -178,3 +192,49 @@ def projection_depth(points, P):
     points_depth = points_nrm .dot (P[2:3, :].T)
 
     return points_depth.reshape(-1)
+
+
+### Conversions between camera pose projection matrices P and other representations
+
+def P_from_rvec_and_tvec(rvec, tvec):
+    """
+    Return the 4x4 P camera projection matrix from OpenCV's camera's 'rvec' and 'tvec'.
+    """
+    return P_from_R_and_t(cv2.Rodrigues(rvec)[0], tvec)
+
+def P_from_pose_TUM(q, l):
+    """
+    Return the 4x4 P camera projection matrix, converted from a camera pose in TUM format ('q', 'l').
+    
+    For more info on the TUM format, see: http://vision.in.tum.de/data/datasets/rgbd-dataset/file_formats
+    'q' and 'l' stand for "quaternion" and "location" respectively.
+    """
+    M = np.eye(4)
+    
+    rvec = rvec_from_quat(np.array(q))
+    M[0:3, 0:3] = cv2.Rodrigues(rvec)[0]
+    M[0:3, 3] = l
+    
+    # Take the inverse, to obtain the transformation matrix that projects points
+    # from the world axis-system to the camera axis-system
+    P = P_inv(M)
+    
+    return P
+
+def pose_TUM_from_P(P):
+    """
+    Return the camera pose in TUM format, converted from 4x4 camera projection matrix 'P'.
+    
+    For more info on the TUM format, see: http://vision.in.tum.de/data/datasets/rgbd-dataset/file_formats
+    'q' and 'l' stand for "quaternion" and "location" respectively.
+    """
+    
+    # Take the inverse, to obtain the transformation matrix that projects points
+    # from the camera axis-system to the world axis-system
+    M = P_inv(P)
+    
+    R = cv2.Rodrigues(M[0:3, 0:3])[0]
+    q = quat_from_rvec(R)
+    l = M[0:3, 3:4]
+    
+    return q, l

@@ -13,6 +13,7 @@ import transforms as trfm
 import triangulation
 from triangulation import iterative_LS_triangulation
 triangulation.set_triangl_output_dtype(np.float32)    # solvePnPRansac() seems to dislike float64...
+import dataset_tools
 
 fontFace = cv2.FONT_HERSHEY_DUPLEX
 fontScale = 0.3
@@ -99,7 +100,7 @@ def draw_axis_system(img, rvec, tvec, cameraMatrix, distCoeffs):
                                   [0., 0., 4.] ])    # Z-axis (blue)
     imgp_reproj, jacob = cv2.projectPoints(
             axis_system_objp, rvec, tvec, cameraMatrix, distCoeffs )
-    origin, xAxis, yAxis, zAxis = np.rint(imgp_reproj.reshape(-1, 2)).astype(int)    # round to nearest int
+    origin, xAxis, yAxis, zAxis = np.rint(imgp_reproj.reshape(-1, 2)).astype(np.int32)    # round to nearest int
     if not (0 <= origin[0] < img.shape[1] and 0 <= origin[1] < img.shape[0]):    # projected origin lies out of the image
         return img    # so don't draw axis-system
     cvh.line(img, origin, xAxis, rgb(255,0,0), thickness=2, lineType=cv2.CV_AA)
@@ -107,6 +108,49 @@ def draw_axis_system(img, rvec, tvec, cameraMatrix, distCoeffs):
     cvh.line(img, origin, zAxis, rgb(0,0,255), thickness=2, lineType=cv2.CV_AA)
     cvh.circle(img, origin, 4, rgb(0,0,0), thickness=-1)    # filled circle, radius 4
     cvh.circle(img, origin, 5, rgb(255,255,255), thickness=2)    # white 'O', radius 5
+    return img
+
+def draw_camera(img, cam_origin, cam_axes, P, K, neg_fy=False, scale_factor=0.07, draw_axes=True, draw_frustum=True):
+    objp_to_project = np.array([ [ 0. ,  0. , 0.],      # cam origin
+                                 [ 1. ,  0.,  0.],      # cam X-axis
+                                 [ 0. ,  1.,  0.],      # cam Y-axis
+                                 [ 0. ,  0.,  1.],      # cam Z-axis
+                                 
+                                 [-0.5, -0.3, 1.],      # frustum top-left
+                                 [ 0.5, -0.3, 1.],      # frustum top-right
+                                 [ 0.5,  0.3, 1.],      # frustum bottom-right
+                                 [-0.5,  0.3, 1.],      # frustum bottom-left
+                                 
+                                 [-0.3, -0.3, 1.],      # cam up indication triangle left
+                                 [ 0.3, -0.3, 1.],      # cam up indication triangle right
+                                 [ 0. , -0.6, 1.] ])    # cam up indication triangle top
+    
+    # Keep size of camera constant by normalizing using the distance between cam origin and origin of visualizing cam P
+    objp_to_project *= cv2.norm(cam_origin.T + P[0:3, 0:3].T.dot(P[0:3, 3:4])) * scale_factor
+    
+    if neg_fy:    # negative focal length requires the cam's Y-axis to be flipped
+        objp_to_project[:, 1] *= -1
+    objp_to_project = cam_origin + objp_to_project.dot(cam_axes)    # transform points in cam coords to world coords
+    objp_projected, cam_visible = trfm.project_points(objp_to_project, P, K, img.shape)
+    
+    if cam_visible.sum() == len(cam_visible):    # only draw axis-system if it's entirely in sight
+        cam_origin = objp_projected[0]
+        if draw_axes:
+            cam_xAxis, cam_yAxis, cam_zAxis = objp_projected[1:4]
+            cvh.line(img, cam_origin, cam_xAxis, rgb(255,0,0), lineType=cv2.CV_AA)      # X-axis (red)
+            cvh.line(img, cam_origin, cam_yAxis, rgb(0,255,0), lineType=cv2.CV_AA)      # Y-axis (green)
+            cvh.line(img, cam_origin, cam_zAxis, rgb(0,0,255), lineType=cv2.CV_AA)      # Z-axis (blue)
+            cvh.circle(img, cam_zAxis, 3, rgb(0,0,255))    # small dot to highlight cam Z axis
+        if draw_frustum:
+            yellow = rgb(255,255,0)
+            frustum_plane = objp_projected[4:8]
+            for i, p in enumerate(frustum_plane):
+                # Create frustum plane
+                cvh.line(img, frustum_plane[i], frustum_plane[(i+1) % 4], yellow, lineType=cv2.CV_AA)
+                # Connect frustum plane points with origin
+                cvh.line(img, cam_origin, p, yellow, lineType=cv2.CV_AA)
+            cv2.fillPoly(img, [objp_projected[8:11]], yellow, lineType=cv2.CV_AA)    # draw up-facing frustum triangle
+    
     return img
 
 def check_triangulation_input(base_img, new_img,
@@ -186,6 +230,16 @@ class Composite2DPainter:
         cv2.waitKey()
 
 class Composite3DPainter:
+        
+    key_bindings = {
+            "MoveLeft"      : [0x51],               # LEFT key
+            "MoveRight"     : [0x53],               # RIGHT key
+            "MoveUp"        : [0x52],               # UP key
+            "MoveDown"      : [0x54],               # DOWN key
+            "ZoomOut"       : [0x55, ord('-')],     # PAGEUP or "-" key
+            "ZoomIn"        : [0x56, ord('=')],     # PAGEDOWN or "=" key
+            "RotateNegZ"    : [0x50, ord('[')],     # HOME or "[" key
+            "RotatePosZ"    : [0x57, ord(']')] }    # END or "]" key
     
     def __init__(self, img_title, P_view, imageSize_view):
         self.img_title = img_title
@@ -199,7 +253,7 @@ class Composite3DPainter:
         self.cams_pos_keyfr = np.empty((0, 3))    # caching of cam trajectory
     
     def draw(self, rvec, tvec, status,
-             triangl_idxs, imgp_to_objp_idxs, objp, objp_groups, color_palette, color_palette_size):    # TODO: move these variables to another class
+             triangl_idxs, imgp_to_objp_idxs, objp, objp_groups, color_palette, color_palette_size, neg_fy):    # TODO: move these variables to another class
         """
         Draw 3D composite view.
         Navigate using the following keys:
@@ -213,13 +267,14 @@ class Composite3DPainter:
         
         # Calculate current camera's axis-system expressed in world coordinates and cache center
         if status:
-            R_cam = cvh.Rodrigues(rvec)
-            cam_axissys_objp = np.empty((4, 3))
-            cam_axissys_objp[0, :] = -R_cam.T.dot(tvec).reshape(1, 3)    # cam_origin
-            cam_axissys_objp[1:4, :] = cam_axissys_objp[0, :] + R_cam    # cam_x, cam_y, cam_z
-            self.cams_pos = np.concatenate((self.cams_pos, cam_axissys_objp[0:1, :]))    # cache cam_origin
+            P_cam = trfm.P_from_rvec_and_tvec(rvec, tvec)
+            cam_axes = P_cam[0:3, 0:3]
+            M_cam = trfm.P_inv(P_cam)
+            cam_origin = M_cam[0:3, 3:4].T
+            
+            self.cams_pos = np.concatenate((self.cams_pos, cam_origin))    # cache cam_origin
             if status == 2:    # frame is a keyframe
-                self.cams_pos_keyfr = np.concatenate((self.cams_pos_keyfr, cam_axissys_objp[0:1, :]))    # cache cam_origin
+                self.cams_pos_keyfr = np.concatenate((self.cams_pos_keyfr, cam_origin))    # cache cam_origin
         
         while True:
             # Fill with dark gray background color
@@ -230,7 +285,7 @@ class Composite3DPainter:
                 draw_axis_system(self.img, cvh.Rodrigues(self.P[0:3, 0:3]), self.P[0:3, 3], self.K, None)
             
             # Draw 3D points
-            objp_proj, objp_visible = trfm.project_points(objp, self.P, self.K)
+            objp_proj, objp_visible = trfm.project_points(objp, self.P, self.K, self.img.shape)
             objp_visible = set(np.where(objp_visible)[0])
             current_idxs = set(imgp_to_objp_idxs[np.array(tuple(triangl_idxs))]) & objp_visible
             done_idxs = np.array(tuple(objp_visible - current_idxs), dtype=int)
@@ -243,12 +298,12 @@ class Composite3DPainter:
                 cvh.circle(self.img, opp[0:2], 2, color, thickness=-1)    # draw point, small radius
             
             # Draw camera trajectory
-            cams_pos_proj, cams_pos_visible = trfm.project_points(self.cams_pos, self.P, self.K)
+            cams_pos_proj, cams_pos_visible = trfm.project_points(self.cams_pos, self.P, self.K, self.img.shape)
             cams_pos_proj = cams_pos_proj[np.where(cams_pos_visible)[0]]
             color = rgb(0,0,0)
             for p1, p2 in zip(cams_pos_proj[:-1], cams_pos_proj[1:]):
                 cvh.line(self.img, p1, p2, color, thickness=2)    # interconnect trajectory points
-            cams_pos_keyfr_proj, cams_pos_keyfr_visible = trfm.project_points(self.cams_pos_keyfr, self.P, self.K)
+            cams_pos_keyfr_proj, cams_pos_keyfr_visible = trfm.project_points(self.cams_pos_keyfr, self.P, self.K, self.img.shape)
             cams_pos_keyfr_proj = cams_pos_keyfr_proj[np.where(cams_pos_keyfr_visible)[0]]
             color = rgb(255,255,255)
             for p in cams_pos_proj:
@@ -258,36 +313,44 @@ class Composite3DPainter:
             
             # Draw current camera axis system
             if status:
-                (cam_origin, cam_xAxis, cam_yAxis, cam_zAxis), cam_visible = \
-                        trfm.project_points(cam_axissys_objp, self.P, self.K)
-                if cam_visible.sum() == len(cam_visible):    # only draw axis-system if it's entirely in sight
-                    cvh.line(self.img, cam_origin, cam_xAxis, rgb(255,0,0), lineType=cv2.CV_AA)
-                    cvh.line(self.img, cam_origin, cam_yAxis, rgb(0,255,0), lineType=cv2.CV_AA)
-                    cvh.line(self.img, cam_origin, cam_zAxis, rgb(0,0,255), lineType=cv2.CV_AA)
-                    cvh.circle(self.img, cam_zAxis, 3, rgb(0,0,255))    # small dot to highlight cam Z axis
+                draw_camera(self.img, cam_origin, cam_axes, self.P, self.K, neg_fy)
             else:
-                last_cam_origin, last_cam_visible = trfm.project_points(self.cams_pos[-1:], self.P, self.K)
+                last_cam_origin, last_cam_visible = trfm.project_points(self.cams_pos[-1:], self.P, self.K, self.img.shape)
                 if last_cam_visible[0]:    # only draw if in sight
                     cvh.putText(self.img, '?', last_cam_origin[0] - (11, 11), fontFace, fontScale * 4, rgb(255,0,0))    # draw '?' because it's a bad frame
             
             # Display image
             cv2.imshow(self.img_title, self.img)
             
-            # Translate view by keyboard
+            # Handle key
             key = cv2.waitKey() & 0xFF
-            delta_t_view = np.zeros((3))
-            if key in (0x51, 0x53):    # LEFT/RIGHT key
-                delta_t_view[0] = 2 * (key == 0x51) - 1    # LEFT -> increase cam X pos
-            elif key in (0x52, 0x54):    # UP/DOWN key
-                delta_t_view[1] = 2 * (key == 0x52) - 1    # UP -> increase cam Y pos
-            elif key in (0x55, 0x56):    # PAGEUP/PAGEDOWN key
-                delta_t_view[2] = 2 * (key == 0x55) - 1    # PAGEUP -> increase cam Z pos
-            elif key in (0x50, 0x57):    # HOME/END key
-                delta_z_rot = 2 * (key == 0x50) - 1    # HOME -> counter-clockwise rotate around cam Z axis
-                self.P[0:3, 0:4] = cvh.Rodrigues((0, 0, delta_z_rot * pi/36)).dot(self.P[0:3, 0:4])    # by steps of 5 degrees
-            else:
+            if not self.handle_key(key):
                 break
-            self.P[0:3, 3] += delta_t_view * 0.3
+    
+    def handle_key(self, key):
+        # Detect keybindings
+        action = None
+        for act in Composite3DPainter.key_bindings:
+            if key in Composite3DPainter.key_bindings[act]:
+                action = act
+                break
+        
+        # Translate view by keyboard
+        delta_t_view = np.zeros((3))
+        if action in ("MoveLeft", "MoveRight"):
+            delta_t_view[0] = 2 * (action == "MoveLeft") - 1    # MoveLeft -> increase cam X pos
+        elif action in ("MoveUp", "MoveDown"):
+            delta_t_view[1] = 2 * (action == "MoveUp") - 1    # MoveUp -> increase cam Y pos
+        elif action in ("ZoomOut", "ZoomIn"):
+            delta_t_view[2] = 2 * (action == "ZoomOut") - 1    # ZoomOut -> increase cam Z pos
+        elif action in ("RotateNegZ", "RotatePosZ"):
+            delta_z_rot = 2 * (action == "RotateNegZ") - 1    # RotateNegZ -> counter-clockwise rotate around cam Z axis
+            self.P[0:3, 0:4] = cvh.Rodrigues((0, 0, delta_z_rot * pi/36)).dot(self.P[0:3, 0:4])    # by steps of 5 degrees
+        else:
+            return False
+        self.P[0:3, 3] += delta_t_view * 0.3
+        
+        return True
 
 ### Attempt to simplify re-indexing
 
@@ -620,15 +683,30 @@ def main():
     boardSize = (8, 6)
     color_palette, color_palette_size = prepare_color_palette(2, 3, 4)    # used to identify 3D point group ids
     
-    cameraMatrix, distCoeffs, imageSize = \
-            load_camera_intrinsics(os.path.join("..", "Datasets", "Webcam", "camera_intrinsics.txt"))
+    #cameraMatrix, distCoeffs, imageSize = \
+            #load_camera_intrinsics(os.path.join("..", "Datasets", "Webcam", "camera_intrinsics.txt"))
     #cameraMatrix, distCoeffs, imageSize = \
             #load_camera_intrinsics(os.path.join("..", "..", "ARDrone2Tests", "camera_calibration", "live_video", "camera_intrinsics_front.txt"))
+    cameraMatrix, distCoeffs, imageSize = \
+            load_camera_intrinsics(os.path.join("..", "Datasets", "ICL_NUIM", "camera_intrinsics.txt"))
+    neg_fy = (cameraMatrix[1, 1] < 0)
     
     # Select working (or 'testing') set
     from glob import glob
-    images = sorted(glob(os.path.join("..", "Datasets", "Webcam", "captures2", "*.jpeg")))
+    #images = sorted(glob(os.path.join("..", "Datasets", "Webcam", "captures2", "*.jpeg")))
     #images = sorted(glob(os.path.join("..", "..", "ARDrone2Tests", "flying_front", "lowres", "drone0", "*.jpg")))[68:]
+    images = sorted(glob(os.path.join("..", "Datasets", "ICL_NUIM", "living_room_traj3n_frei_png", "rgb", "*.png")),
+                    key = lambda filepath: int(filepath[filepath.rfind("/") + 1: -len(".png")]))    # correctly sort "2.png" vs "10.png"
+    
+    # Load pre-defined initialization points, needed for datasets without chessboard in the beginning
+    timestps, locations, quaternions = dataset_tools.load_cam_trajectory_TUM(
+            os.path.join("..", "Datasets", "ICL_NUIM", "living_room_traj3n_frei_png", "livingRoom3n.gt.freiburg_exact") )
+    P_init = trfm.P_from_pose_TUM(quaternions[0], locations[0])
+    predef_objp, _, _ = dataset_tools.load_3D_points_from_pcd_file(
+            os.path.join("..", "Datasets", "ICL_NUIM", "living_room_traj3n_frei_png", "init_points.pcd") )
+    predef_imgp, predef_imgp_visible = trfm.project_points(
+            predef_objp, P_init, cameraMatrix, [imageSize[1], imageSize[0]], round=False )    # keep high accuracy, no rounding
+    predef_imgp = predef_imgp[np.where(predef_imgp_visible)[0]]
     
     # Setup some visualization helpers
     composite2D_painter = Composite2DPainter("composite 2D", imageSize)
@@ -675,19 +753,29 @@ def main():
     
     # Start frame requires special treatment
     
-    # Start frame : read image and detect 2D points
+    # Start frame : read image and detect 2D points ...
     imgs.append(cv2.imread(images[0]))
     base_img = imgs[0]
     imgs_gray.append(cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY))
-    ret, new_imgp = cvh.extractChessboardFeatures(imgs[0], boardSize)
-    if not ret:
-        print "First image must contain the entire chessboard!"
-        return
     
-    # Start frame : define a priori 3D points
-    objp = prepare_object_points(boardSize)
-    objp_groups = np.zeros((objp.shape[0]), dtype=np.int)
+    ## ... in case of chessboard
+    #ret, new_imgp = cvh.extractChessboardFeatures(imgs[0], boardSize)
+    #if not ret:
+        #print "First image must contain the entire chessboard!"
+        #return
+    
+    # ... in case of pre-defined points
+    new_imgp = predef_imgp.astype(np.float32)
+    
+    # Start frame : define a priori 3D points ...
+    objp_groups = np.zeros(len(new_imgp), dtype=np.int)
     group_id += 1
+    
+    ## ... in case of chessboard 
+    #objp = prepare_object_points(boardSize)
+    
+    # ... in case of pre-defined points
+    objp = np.array(predef_objp)
     
     # Start frame : setup linking data-structures
     base_imgp = new_imgp    # 2D points
@@ -725,38 +813,63 @@ def main():
     
     # Draw 3D points info of all frames
     print "Drawing composite 3D image    (keys: LEFT/RIGHT/UP/DOWN/PAGEUP/PAGEDOWN/HOME/END)"
+    #print "                             (  or:   A    D    W   S     -       =      [   ] )"
+    print "                              (  or:                       -       =      [   ] )"
     composite3D_painter.draw(rvec, tvec, ret,
-                             triangl_idxs, imgp_to_objp_idxs, objp, objp_groups, color_palette, color_palette_size)
+                             triangl_idxs, imgp_to_objp_idxs, objp, objp_groups, color_palette, color_palette_size, neg_fy)
     
-    for i in range(1, len(images)):
-        # Frame[i-1] -> Frame[i]
-        print "\nFrame[%s] -> Frame[%s]" % (i-1, i)
-        print "    processing '", images[i], "':"
-        cur_img = cv2.imread(images[i])
-        imgs.append(cur_img)
-        imgs_gray.append(cv2.cvtColor(imgs[-1], cv2.COLOR_BGR2GRAY))
-        ret, base_imgp, new_imgp, triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_groups, group_id, rvec, tvec, rvec_keyfr, tvec_keyfr, base_img = \
-                handle_new_frame(base_imgp, new_imgp, imgs[-2], imgs_gray[-2], imgs[-1], imgs_gray[-1], triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_groups, group_id, rvec_keyfr, tvec_keyfr, base_img)
+    try:
+        for i in range(1, len(images)):
+            # Frame[i-1] -> Frame[i]
+            print "\nFrame[%s] -> Frame[%s]" % (i-1, i)
+            print "    processing '", images[i], "':"
+            cur_img = cv2.imread(images[i])
+            imgs.append(cur_img)
+            imgs_gray.append(cv2.cvtColor(imgs[-1], cv2.COLOR_BGR2GRAY))
+            ret, base_imgp, new_imgp, triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_groups, group_id, rvec, tvec, rvec_keyfr, tvec_keyfr, base_img = \
+                    handle_new_frame(base_imgp, new_imgp, imgs[-2], imgs_gray[-2], imgs[-1], imgs_gray[-1], triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_groups, group_id, rvec_keyfr, tvec_keyfr, base_img)
+            
+            if ret:
+                rvecs.append(rvec)
+                tvecs.append(tvec)
+                if ret == 2:    # frame is a keyframe
+                    rvecs_keyfr.append(rvec_keyfr)
+                    tvecs_keyfr.append(tvec_keyfr)
+            else:    # frame rejected
+                rvecs.append(None)
+                tvecs.append(None)
+                del imgs[-1]
+                del imgs_gray[-1]
+            
+            # Draw 3D points info of current frame
+            print "Drawing composite 2D image"
+            composite2D_painter.draw(cur_img, rvec, tvec, ret,
+                                    cameraMatrix, distCoeffs, triangl_idxs, nontriangl_idxs, all_idxs_tmp, new_imgp, imgp_to_objp_idxs, objp, objp_groups, group_id, color_palette, color_palette_size)
+            
+            # Draw 3D points info of all frames
+            print "Drawing composite 3D image    (keys: LEFT/RIGHT/UP/DOWN/PAGEUP/PAGEDOWN/HOME/END)"
+            #print "                             (  or:   A    D    W   S     -       =      [   ] )"
+            print "                              (  or:                       -       =      [   ] )"
+            composite3D_painter.draw(rvec, tvec, ret,
+                                    triangl_idxs, imgp_to_objp_idxs, objp, objp_groups, color_palette, color_palette_size, neg_fy)
+    except KeyboardInterrupt:
+        print "Saving trajectory and pointcloud..."
         
-        if ret:
-            rvecs.append(rvec)
-            tvecs.append(tvec)
-            if ret == 2:    # frame is a keyframe
-                rvecs_keyfr.append(rvec_keyfr)
-                tvecs_keyfr.append(tvec_keyfr)
-        else:    # frame rejected
-            del imgs[-1]
-            del imgs_gray[-1]
+        Ps = []
+        for rvec, tvec in zip(rvecs, tvecs):
+            if rvec == None == tvec:
+                Ps.append(None)    # bad frame
+            else:
+                Ps.append(trfm.P_from_rvec_and_tvec(rvec, tvec))
+        timestps, locations, quaternions = dataset_tools.convert_cam_poses_to_cam_trajectory_TUM(Ps)
+        dataset_tools.save_cam_trajectory_TUM("slam2_out.traj", timestps, locations, quaternions)
         
-        # Draw 3D points info of current frame
-        print "Drawing composite 2D image"
-        composite2D_painter.draw(cur_img, rvec, tvec, ret,
-                                 cameraMatrix, distCoeffs, triangl_idxs, nontriangl_idxs, all_idxs_tmp, new_imgp, imgp_to_objp_idxs, objp, objp_groups, group_id, color_palette, color_palette_size)
+        objp_group_lifetime = objp_groups.reshape(len(objp_groups), 1) / float(np.max(objp_groups))
+        objp_group_colors = np.concatenate((color_palette[objp_groups % color_palette_size][:, 0:3],
+                                            255 * (0.3 + 0.7 * objp_group_lifetime)), axis=1)    # lifetime as alpha
+        dataset_tools.save_3D_points_to_pcd_file("slam2_out.pcd", objp, objp_group_colors)
         
-        # Draw 3D points info of all frames
-        print "Drawing composite 3D image    (keys: LEFT/RIGHT/UP/DOWN/PAGEUP/PAGEDOWN)"
-        composite3D_painter.draw(rvec, tvec, ret,
-                                 triangl_idxs, imgp_to_objp_idxs, objp, objp_groups, color_palette, color_palette_size)
+        print "Done."
 
 
 if __name__ == "__main__":
