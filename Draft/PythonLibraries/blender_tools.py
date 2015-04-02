@@ -51,6 +51,42 @@ def object_name_from_filename(filename, name_prefix="", strip_file_extension=Tru
     
     return name_prefix + name
 
+def backup_ob_selection():
+    """
+    Backup the current mode and selection.
+    """
+    mode_backup = bpy.context.mode
+    selected_objects_backup = bpy.context.selected_objects
+    active_object_backup = bpy.context.active_object
+    return mode_backup, selected_objects_backup, active_object_backup
+
+def restore_ob_selection(mode_backup, selected_objects_backup, active_object_backup):
+    """
+    Restore original mode and selection.
+    Input should be "*backup_ob_selection()".
+    """
+    if bpy.context.mode != "OBJECT": bpy.ops.object.mode_set()    # switch to object mode
+    bpy.ops.object.select_all(action="DESELECT")
+    for ob in selected_objects_backup: ob.select = True
+    bpy.context.scene.objects.active = active_object_backup
+    bpy.ops.object.mode_set(mode_backup)
+
+def backup_anim_state():
+    """
+    Backup the current framenr and active layers.
+    """
+    frame_current_backup = bpy.context.scene.frame_current
+    layers_backup = tuple(bpy.context.scene.layers)
+    return frame_current_backup, layers_backup
+
+def restore_anim_state(frame_current_backup, layers_backup):
+    """
+    Restore the original framenr and active layers.
+    Input should be "*backup_anim_state()".
+    """
+    bpy.context.scene.layers = layers_backup
+    bpy.context.scene.frame_current = frame_current_backup
+
 
 """ Functions related to cameras """
 
@@ -135,7 +171,8 @@ def extract_current_pose():
 def create_cam_trajectory(name,
                           locations, quaternions,
                           start_frame=1, framenrs=None,
-                          no_keyframe_highlighting=False):
+                          no_keyframe_highlighting=False,
+                          select_ob=True, goto_last_keyframe=False):
     """
     "name" : name of Camera to be created
     "locations" : list of cam center positions for each trajectory node
@@ -143,11 +180,13 @@ def create_cam_trajectory(name,
     "start_frame" : start frame of the trajectory
     "framenrs" : list of frame numbers for each trajectory node (should be in increasing order)
     "no_keyframe_highlighting" : if True, don't show framenumbers for each keyframe along trajectory
+    "select_ob" : select the camera object (and trajectory)
+    "goto_last_keyframe" : go to the last keyframe of the generated trajectory
     """
     
-    # Backup the current framenr and active layers
-    frame_current_backup = bpy.context.scene.frame_current
-    layers_backup = tuple(bpy.context.scene.layers)
+    if not select_ob:
+        ob_selection_backup = backup_ob_selection()
+    anim_state_backup = list(backup_anim_state())
     
     # Create the camera
     if bpy.context.mode != "OBJECT": bpy.ops.object.mode_set()    # switch to object mode
@@ -187,12 +226,15 @@ def create_cam_trajectory(name,
     else:
         bpy.ops.object.paths_calculate(start_frame=start_frame, end_frame=start_frame + len(locations))
     
-    # Restore the original framenr and active layers
-    bpy.context.scene.layers = layers_backup
-    bpy.context.scene.frame_current = frame_current_backup
+    if goto_last_keyframe:
+        anim_state_backup[0] = bpy.context.scene.frame_current
+    restore_anim_state(*anim_state_backup)
+    if not select_ob:
+        restore_ob_selection(*ob_selection_backup)
 
 def load_and_create_cam_trajectory(filename, name_prefix="", strip_file_extension=False,
-                                   start_frame=1, fps="blender", no_keyframe_highlighting=True):
+                                   start_frame=1, fps="blender", no_keyframe_highlighting=True,
+                                   goto_last_keyframe=False):
     """
     Load a camera trajectory (in the TUM format, see "dataset_tools" module for more info)
     with filename "filename", and create it in Blender.
@@ -204,6 +246,7 @@ def load_and_create_cam_trajectory(filename, name_prefix="", strip_file_extensio
             - "data" : infer the fps from the data (using minimum delta time)
             - an integer indicating the data's fps
     "no_keyframe_highlighting" : if True, don't show framenumbers for each keyframe along trajectory
+    "goto_last_keyframe" : go to the last keyframe of the generated trajectory
     """
     
     timestps, locations, quaternions = dataset_tools.load_cam_trajectory_TUM(filename)
@@ -222,7 +265,8 @@ def load_and_create_cam_trajectory(filename, name_prefix="", strip_file_extensio
     
     create_cam_trajectory(
             object_name_from_filename(filename, name_prefix, strip_file_extension),
-            locations, quaternions, start_frame, framenrs, no_keyframe_highlighting )
+            locations, quaternions, start_frame, framenrs, no_keyframe_highlighting,
+            goto_last_keyframe=goto_last_keyframe )
 
 
 """ Functions related to 3D geometry """
@@ -230,7 +274,7 @@ def load_and_create_cam_trajectory(filename, name_prefix="", strip_file_extensio
 def create_mesh(name, coords, connect=False, edges=None):
     """
     Create a mesh with name "name" from a list of vertices "coords".
-    Return the generated object.
+    Return the generated object, and "is_new_ob" which is True when a new object has been created.
     
     If "connect" is True, two successive (in order) vertices
     will be linked together by an edge.
@@ -238,19 +282,20 @@ def create_mesh(name, coords, connect=False, edges=None):
     to be linked together with an edge.
     """
     
-    # Define the coordinates of the vertices. Each vertex is defined by a tuple of 3 floats.
+    # Create a new mesh
     mesh_name = name + "Mesh"
+    me = bpy.data.meshes.new(mesh_name)    
     
-    me = bpy.data.meshes.new(mesh_name)    # create a new mesh
-    if name in bpy.data.objects and bpy.data.objects[name].type == "MESH":
+    is_new_ob = not (name in bpy.data.objects and bpy.data.objects[name].type == "MESH")
+    if is_new_ob:
+        ob = bpy.data.objects.new(name, me)    # create an object with that mesh
+        bpy.context.scene.objects.link(ob)    # link object to scene
+    else:
         if bpy.context.mode != "OBJECT": bpy.ops.object.mode_set()    # switch to object mode
         ob = bpy.data.objects[name]
         me_old = ob.data
         ob.data = me
         bpy.data.meshes.remove(me_old)
-    else:
-        ob = bpy.data.objects.new(name, me)    # create an object with that mesh
-        bpy.context.scene.objects.link(ob)    # link object to scene
     
     ob.location = [0, 0, 0]    # position object at origin
     
@@ -268,7 +313,7 @@ def create_mesh(name, coords, connect=False, edges=None):
     me.from_pydata(coords, edges, faces)    # edges or faces should be [], or you ask for problems
     me.update(calc_edges=True)    # update mesh with new data
     
-    return ob
+    return ob, is_new_ob
 
 
 """ File- import/export functions """
@@ -302,11 +347,7 @@ def extract_points_to_ply_file(filename, by_selection=False, name_starts_with=""
     
     Note: at least 3 vertices should be extracted (in total).
     """
-    
-    # Save current mode and selection
-    mode_backup = bpy.context.mode
-    selected_objects_backup = bpy.context.selected_objects
-    active_object_backup = bpy.context.active_object
+    ob_selection_backup = backup_ob_selection()
     
     # Select to-be-exported objects
     if bpy.context.mode != "OBJECT": bpy.ops.object.mode_set()    # switch to object mode
@@ -332,12 +373,7 @@ def extract_points_to_ply_file(filename, by_selection=False, name_starts_with=""
     bpy.ops.export_mesh.ply(filepath=filename, use_normals=False, use_uv_coords=False)    # export to ply-file
     bpy.ops.object.delete(use_global=True)    # remove temporary mesh
     
-    # Restore original mode and selection
-    bpy.ops.object.select_all(action="DESELECT")
-    for ob in selected_objects_backup:
-        ob.select = True
-    bpy.context.scene.objects.active = active_object_backup
-    bpy.ops.object.mode_set(mode_backup)
+    restore_ob_selection(*ob_selection_backup)
 
 def extract_points_to_pcd_file(filename, by_selection=False, name_starts_with="", name_ends_with=""):
     """
@@ -357,26 +393,28 @@ def extract_points_to_pcd_file(filename, by_selection=False, name_starts_with=""
     
     dataset_tools.save_3D_points_to_pcd_file(filename, verts)
 
-def import_points_from_pcd_file(filename, name_prefix=""):
+def import_points_from_pcd_file(filename, name_prefix="", select_ob=True):
     """
     Import 3D coordinates of vertices from a PointCloud (.pcd) file.
     
     "name_prefix" : see documentation of "object_name_from_filename()"
+    "select_ob" : select the imported pointcloud object
     
     Note: currently, colors are not yet supported.
     """
     
     # Import point cloud
     verts, colors, found_alpha = dataset_tools.load_3D_points_from_pcd_file(filename, use_alpha=True)
-    ob = create_mesh(object_name_from_filename(filename, name_prefix), verts)
+    ob, is_new_ob = create_mesh(object_name_from_filename(filename, name_prefix), verts)
     
     # Mark object as a pointcloud
     ob["is_pointcloud"] = True
     
-    if colors != None:
-        # Mark object as a colored pointcloud
-        ob["pointcloud_has_rgba"] = True
-        ob.show_transparent = found_alpha    # render alpha channel
+    # Mark object as a colored pointcloud, if applicable
+    ob["pointcloud_has_rgba"] = (colors != None)
+    if ob["pointcloud_has_rgba"]:
+        if is_new_ob:    # only change transparency in this case
+            ob.show_transparent = found_alpha    # render alpha channel
         
         # Open mesh for editing vertex custom data
         bm = bmesh.new()
@@ -397,8 +435,89 @@ def import_points_from_pcd_file(filename, name_prefix=""):
         bm.to_mesh(ob.data)
         del bm
     
-    # Select the generated object
-    if bpy.context.mode != "OBJECT": bpy.ops.object.mode_set()    # switch to object mode
-    bpy.ops.object.select_all(action="DESELECT")
-    ob.select = True
-    bpy.context.scene.objects.active = ob
+    if select_ob:
+        # Select the generated object
+        if bpy.context.mode != "OBJECT": bpy.ops.object.mode_set()    # switch to object mode
+        bpy.ops.object.select_all(action="DESELECT")
+        ob.select = True
+        bpy.context.scene.objects.active = ob
+
+
+""" Event handling functionality """
+
+file_listener = []
+
+def run_file_listener(filepaths, handler, timer_timeout=1.):
+    """
+    Create a file listener, checking files in the "filepaths" list for change at period "timer_timeout".
+    Press ESCAPE to stop the file listener.
+    
+    When a change occurs (initially all files are assumed to not exist), function "handler" will be called
+    with the following signature:
+        def handler(self, changed_files, filepaths, filepath_statuses):
+            ...
+    where:
+        "changed_files" : list of indices in "filepaths" for which their statuses changed
+        "filepaths" : reference to the original "filepaths" list
+        "filepath_statuses" : status for each file in "filepaths": file-size in bytes, or None if file doesn't exist
+        "self" : instance of ModalFileListenerOperator, ignore this
+    
+    Note: a 'change' means either change in existence of the file, or change in file-size.
+    """
+    
+    # Unregister previous ModalFileListenerOperator class, if present
+    if file_listener:
+        bpy.utils.unregister_class(file_listener[0])
+        file_listener[:] = []
+    
+    # Define new singleton class, using new arguments as parameters
+    class ModalFileListenerOperator(bpy.types.Operator):
+        """Operator which runs its self from a timer"""
+        bl_idname = "wm.modal_file_listener_operator"
+        bl_label = "Modal File Listener Operator"
+
+        _timer = None
+        _timer_timeout = timer_timeout
+        _filepaths = filepaths
+        _handler = handler
+        
+        _filepath_statuses = [None] * len(filepaths)    # initially assume file doesn't exist
+
+        def modal(self, context, event):
+            if event.type == 'ESC':
+                return self.cancel(context)
+
+            if event.type == 'TIMER':
+                changed_files = []
+                
+                for i, (filepath, filepath_status) in enumerate(zip(self._filepaths, self._filepath_statuses)):
+                    filepath_status_new = None    # by default assume file doesn't exist
+                    try:
+                        filepath_status_new = os.stat(filepath).st_size
+                    except OSError:
+                        pass    # file probably doesn't exist
+                    
+                    if filepath_status_new != filepath_status:
+                        changed_files.append(i)
+                        self._filepath_statuses[i] = filepath_status_new
+                
+                if changed_files:
+                    self._handler(changed_files, self._filepaths, self._filepath_statuses)
+
+            return {'PASS_THROUGH'}
+
+        def execute(self, context):
+            self._timer = context.window_manager.event_timer_add(self._timer_timeout, context.window)
+            context.window_manager.modal_handler_add(self)
+            return {'RUNNING_MODAL'}
+
+        def cancel(self, context):
+            context.window_manager.event_timer_remove(self._timer)
+            return {'CANCELLED'}
+    
+    # Register new ModalFileListenerOperator class
+    file_listener.append(ModalFileListenerOperator)
+    bpy.utils.register_class(file_listener[0])
+    
+    # Call the registered "Modal File Listener Operator"
+    bpy.ops.wm.modal_file_listener_operator()

@@ -45,7 +45,6 @@ Note:
     If that pointcloud has stored individual color values,
     the RGB values of the "Object Color" property (see Example) will not have any effect,
     but the alpha value will have, at least when "Transparent" is checked.
-
 """
 
 bl_info = {

@@ -65,6 +65,10 @@ def load_camera_intrinsics(filename):
     return cameraMatrix, distCoeffs, imageSize
 
 
+def sample_colors(img, imgp):
+    return img[tuple(np.rint(imgp[:, ::-1]).astype(int).T)]
+
+
 def keypoint_mask(points):
     """Returns a mask that covers the keypoints with False, using 'keypoint_coverage_radius' as radius."""
     mask_img = np.ones((imageSize[1], imageSize[0]), dtype=np.uint8)
@@ -110,6 +114,7 @@ def draw_axis_system(img, rvec, tvec, cameraMatrix, distCoeffs):
     cvh.circle(img, origin, 5, rgb(255,255,255), thickness=2)    # white 'O', radius 5
     return img
 
+
 def draw_camera(img, cam_origin, cam_axes, P, K, neg_fy=False, scale_factor=0.07, draw_axes=True, draw_frustum=True):
     objp_to_project = np.array([ [ 0. ,  0. , 0.],      # cam origin
                                  [ 1. ,  0.,  0.],      # cam X-axis
@@ -152,6 +157,7 @@ def draw_camera(img, cam_origin, cam_axes, P, K, neg_fy=False, scale_factor=0.07
             cv2.fillPoly(img, [objp_projected[8:11]], yellow, lineType=cv2.CV_AA)    # draw up-facing frustum triangle
     
     return img
+
 
 def check_triangulation_input(base_img, new_img,
                               imgp0, imgp1,
@@ -209,7 +215,7 @@ class Composite2DPainter:
             P = trfm.P_from_R_and_t(cvh.Rodrigues(rvec), tvec)
             objp_depth = trfm.projection_depth(objp[objp_idxs], P)
             objp_colors = color_palette[groups % color_palette_size]    # set color by group id
-            for ip, ipt, opd, opg, color in zip(imgp, text_imgp, objp_depth, groups, objp_colors):
+            for ip, ipt, opd, color in zip(imgp, text_imgp, objp_depth, objp_colors):
                 cvh.circle(self.img, ip, 2, color, thickness=-1)    # draw triangulated point
                 cvh.putText(self.img, "%.3f" % opd, ipt, fontFace, fontScale, color)    # draw depths
             
@@ -239,7 +245,9 @@ class Composite3DPainter:
             "ZoomOut"       : [0x55, ord('-')],     # PAGEUP or "-" key
             "ZoomIn"        : [0x56, ord('=')],     # PAGEDOWN or "=" key
             "RotateNegZ"    : [0x50, ord('[')],     # HOME or "[" key
-            "RotatePosZ"    : [0x57, ord(']')] }    # END or "]" key
+            "RotatePosZ"    : [0x57, ord(']')],     # END or "]" key
+            "SwitchColors"  : [ord('c')],            # "c" key
+            "SaveResults"   : [0x0D] }              # ENTER key
     
     def __init__(self, img_title, P_view, imageSize_view):
         self.img_title = img_title
@@ -251,9 +259,12 @@ class Composite3DPainter:
         self.K[0:2, 2] = np.array(imageSize_view) / 2.    # set cam principal point
         self.cams_pos = np.empty((0, 3))    # caching of cam trajectory
         self.cams_pos_keyfr = np.empty((0, 3))    # caching of cam trajectory
+        self.color_mode = 1    # 0 means BGR colors, 1 means objp_group colors
+        
+        self.save_results_flag = False    # TODO: move this to other class
     
     def draw(self, rvec, tvec, status,
-             triangl_idxs, imgp_to_objp_idxs, objp, objp_groups, color_palette, color_palette_size, neg_fy):    # TODO: move these variables to another class
+             triangl_idxs, imgp_to_objp_idxs, objp, objp_colors, objp_groups, color_palette, color_palette_size, neg_fy):    # TODO: move these variables to another class
         """
         Draw 3D composite view.
         Navigate using the following keys:
@@ -290,11 +301,17 @@ class Composite3DPainter:
             current_idxs = set(imgp_to_objp_idxs[np.array(tuple(triangl_idxs))]) & objp_visible
             done_idxs = np.array(tuple(objp_visible - current_idxs), dtype=int)
             current_idxs = np.array(tuple(current_idxs), dtype=int)
-            groups = objp_groups[current_idxs]
-            for opp, opg, color in zip(objp_proj[current_idxs], groups, color_palette[groups % color_palette_size]):
+            if self.color_mode == 0:
+                colors = objp_colors[current_idxs].astype(float)
+            elif self.color_mode == 1:
+                colors = color_palette[objp_groups[current_idxs] % color_palette_size]
+            for opp, color in zip(objp_proj[current_idxs], colors):
                 cvh.circle(self.img, opp[0:2], 4, color, thickness=-1)    # draw point, big radius
-            groups = objp_groups[done_idxs]
-            for opp, opg, color in zip(objp_proj[done_idxs], groups, color_palette[groups % color_palette_size]):
+            if self.color_mode == 0:
+                colors = objp_colors[done_idxs].astype(float)
+            elif self.color_mode == 1:
+                colors = color_palette[objp_groups[done_idxs] % color_palette_size]
+            for opp, color in zip(objp_proj[done_idxs], colors):
                 cvh.circle(self.img, opp[0:2], 2, color, thickness=-1)    # draw point, small radius
             
             # Draw camera trajectory
@@ -328,6 +345,11 @@ class Composite3DPainter:
                 break
     
     def handle_key(self, key):
+        """
+        Handles keys and performs the associated action.
+        Return True if a redraw is needed, otherwise False.
+        """
+        
         # Detect keybindings
         action = None
         for act in Composite3DPainter.key_bindings:
@@ -336,6 +358,7 @@ class Composite3DPainter:
                 break
         
         # Translate view by keyboard
+        do_transform = True
         delta_t_view = np.zeros((3))
         if action in ("MoveLeft", "MoveRight"):
             delta_t_view[0] = 2 * (action == "MoveLeft") - 1    # MoveLeft -> increase cam X pos
@@ -347,10 +370,21 @@ class Composite3DPainter:
             delta_z_rot = 2 * (action == "RotateNegZ") - 1    # RotateNegZ -> counter-clockwise rotate around cam Z axis
             self.P[0:3, 0:4] = cvh.Rodrigues((0, 0, delta_z_rot * pi/36)).dot(self.P[0:3, 0:4])    # by steps of 5 degrees
         else:
-            return False
-        self.P[0:3, 3] += delta_t_view * 0.3
+            do_transform = False
+        if do_transform:
+            self.P[0:3, 3] += delta_t_view * 0.3
+            return True
         
-        return True
+        # Change color mode
+        if action == "SwitchColors":
+            self.color_mode = (self.color_mode + 1) % 2
+            return True
+        
+        # Set flag to save results    # TODO: move this to other class
+        if action == "SaveResults":
+            self.save_results_flag = True
+        
+        return False
 
 ### Attempt to simplify re-indexing
 
@@ -383,20 +417,21 @@ def idxs_add_objp(objp_extra_container, triangl_idxs_extra,
                   objp_container, imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp):
     """Add new object-points objp_extra, they correspond with elements in base_imgp of which their idx is in triangl_idxs_extra.
     With:
-        objp_container == (objp, objp_groups)
-        objp_extra_container == (objp_extra, objp_groups_extra)
+        objp_container == (objp, objp_colors, objp_groups)
+        objp_extra_container == (objp_extra, objp_colors_extra, objp_groups_extra)
     
     type(triangl_idxs_extra) must be "set".
     """
     # NOTICE: see approaches explained in idxs_update_by_idxs() to compare indexing methods
-    (objp, objp_groups) = objp_container
-    (objp_extra, objp_groups_extra) = objp_extra_container
+    (objp, objp_colors, objp_groups) = objp_container
+    (objp_extra, objp_colors_extra, objp_groups_extra) = objp_extra_container
     imgp_to_objp_idxs[np.array(sorted(triangl_idxs_extra), dtype=int)] = np.arange(len(objp), len(objp) + len(objp_extra))
     triangl_idxs |= triangl_idxs_extra
     nontriangl_idxs -= triangl_idxs_extra
     objp = np.concatenate((objp, objp_extra))
+    objp_colors = np.concatenate((objp_colors, objp_colors_extra))
     objp_groups = np.concatenate((objp_groups, objp_groups_extra))
-    return (objp, objp_groups), imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs
+    return (objp, objp_colors, objp_groups), imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs
 
 def idxs_rebase_and_add_imgp(imgp_extra,
                              base_imgp, new_imgp, imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp):
@@ -416,15 +451,16 @@ def idxs_rebase_and_add_imgp(imgp_extra,
 
 def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as not-yet triangl points of last keyframe
                      prev_imgp,    # includes 2D points of last frame
+                     base_img,    # used for color extraction and debug
                      prev_img, prev_img_gray,
                      new_img, new_img_gray,
                      triangl_idxs, nontriangl_idxs,    # indices of 2D points in base_imgp
                      imgp_to_objp_idxs,    # indices from 2D points in base_imgp to 3D points in objp
                      all_idxs_tmp,    # list of idxs of 2D points in base_imgp, matches prev_imgp to base_imgp
                      objp,    # triangulated 3D points
+                     objp_colors,    # BGR values of triangulated 3D points
                      objp_groups, group_id,    # corresponding group ids of triangulated 3D points, and current group id
-                     rvec_keyfr, tvec_keyfr,    # rvec and tvec of last keyframe
-                     base_img):    # used for debug
+                     rvec_keyfr, tvec_keyfr):    # rvec and tvec of last keyframe
     
     # Save initial indexing state
     triangl_idxs_old = set(triangl_idxs)
@@ -467,7 +503,7 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
         #while True:
             #cv2.imgshow("img", cvh.drawKeypointsAndMotion(new_img, kp1, kp2, rgb(0,0,255)))
             #cv2.waitKey()
-        return False, base_imgp, prev_imgp, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr, base_img
+        return False, base_imgp, prev_imgp, base_img, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_colors, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr
     
     # Save matches by idxs
     preserve_idxs = set(all_idxs_tmp[new_to_prev_idxs])
@@ -475,7 +511,7 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             preserve_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
     if len(triangl_idxs) < 8:    # solvePnP uses 8-point algorithm
         print "REJECTED: I lost track of too many already-triangulated points, so we can't do solvePnP() anymore...\n"
-        return False, base_imgp, prev_imgp, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr, base_img
+        return False, base_imgp, prev_imgp, base_img, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_colors, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr
     new_imgp = new_imgp[new_to_prev_idxs]
     #cv2.cornerSubPix(    # TODO: activate this secret weapon    <-- hmm, actually seems to make it worse
                 #new_img_gray, new_imgp,
@@ -495,7 +531,7 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
     # ... if ratio of 'inliers' vs input is too low, reject frame, ...
     if inliers == None:    # inliers is empty => reject frame
         print "REJECTED: No inliers based on solvePnP()!\n"
-        return False, base_imgp, prev_imgp, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr, base_img
+        return False, base_imgp, prev_imgp, base_img, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_colors, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr
     inliers = inliers.reshape(-1)
     solvePnP_outlier_ratio = (len(triangl_idxs) - len(inliers)) / float(len(triangl_idxs))
     print "solvePnP_outlier_ratio:", solvePnP_outlier_ratio
@@ -504,7 +540,7 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             print "REJECTED: Not enough inliers (ratio) based on solvePnP()!\n"
         else:
             print "REJECTED: Not enough inliers (absolute) based on solvePnP() to perform (non-RANSAC) solvePnP()!\n"
-        return False, base_imgp, prev_imgp, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr, base_img
+        return False, base_imgp, prev_imgp, base_img, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_colors, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr
     
     # <DEBUG: visualize reprojection error>    TODO: remove
     reproj_error, imgp_reproj1 = reprojection_error(filtered_triangl_objp, filtered_triangl_imgp, rvec_, tvec_, cameraMatrix, distCoeffs)
@@ -532,7 +568,7 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
     print "solvePnP refined reproj_error:", reproj_error
     if reproj_error > max_solvePnP_reproj_error:    # reject frame
         print "REJECTED: Too high reprojection error based on pose estimate of solvePnP()!\n"
-        return False, base_imgp, prev_imgp, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr, base_img
+        return False, base_imgp, prev_imgp, base_img, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_colors, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr
     
     # <DEBUG: verify poses by reprojection error>    TODO: remove
     i0 = draw_axis_system(np.array(new_img), rvec, tvec, cameraMatrix, distCoeffs)
@@ -605,10 +641,12 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             #imgpnrm1 = imgpnrm1[inliers_objp_done]
             ##filtered_triangl_objp = np.concatenate((filtered_triangl_objp, objp_done))    # collect all desired object-points
             #filtered_triangl_imgp = np.concatenate((filtered_triangl_imgp, imgp1))    # collect corresponding image-points of current frame
-            #preserve_idxs = triangl_idxs | set(nontriangl_idxs_array[inliers_objp_done])
+            #nontriangl_idxs_array = nontriangl_idxs_array[inliers_objp_done]
             
             # ... uncomment this.
             filtered_triangl_imgp = filtered_triangl_imgp_tmp
+            
+            # Preserve all good indices
             preserve_idxs = triangl_idxs | set(nontriangl_idxs_array)
             
             # <DEBUG: check reprojection error of the new freshly (refined) triangulated points, based on both pose estimates of keyframe and current cam>    TODO: remove
@@ -622,9 +660,10 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             new_imgp = filtered_triangl_imgp
             triangl_idxs, nontriangl_idxs, all_idxs_tmp = idxs_update_by_idxs(
                     preserve_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
+            objp_colors_done = sample_colors(base_img, base_imgp[nontriangl_idxs_array])    # use colors of base-image, they don't have OF drift
             objp_groups_done = np.empty((len(objp_done)), dtype=int); objp_groups_done.fill(group_id)    # assign to current 'group_id'
-            (objp, objp_groups), imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs = idxs_add_objp(
-                    (objp_done, objp_groups_done), preserve_idxs - triangl_idxs, (objp, objp_groups), imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
+            (objp, objp_colors, objp_groups), imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs = idxs_add_objp(
+                    (objp_done, objp_colors_done, objp_groups_done), preserve_idxs - triangl_idxs, (objp, objp_colors, objp_groups), imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
             
             ## <DEBUG: check intermediate outlier filtering>    TODO: remove
             #i4 = np.array(new_img)
@@ -666,7 +705,7 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
         base_img = new_img
     
     # Successfully return
-    return True + int(is_keyframe), base_imgp, new_imgp, triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_groups, group_id, rvec, tvec, rvec_keyfr, tvec_keyfr, base_img
+    return True + int(is_keyframe), base_imgp, new_imgp, base_img, triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_colors, objp_groups, group_id, rvec, tvec, rvec_keyfr, tvec_keyfr
 
 
 def main():
@@ -744,6 +783,7 @@ def main():
     imgs_gray = []
     
     objp = []    # 3D points
+    objp_colors = []    # 3D point BGR color, measured at pixel of first frame of the newly added point
     objp_groups = []    # 3D point group ids, each new batch of detected points is put in a separate group
     group_id = 0    # current 3D point group id
     
@@ -768,6 +808,7 @@ def main():
     new_imgp = predef_imgp.astype(np.float32)
     
     # Start frame : define a priori 3D points ...
+    objp_colors = sample_colors(imgs[0], new_imgp)
     objp_groups = np.zeros(len(new_imgp), dtype=np.int)
     group_id += 1
     
@@ -816,60 +857,81 @@ def main():
     #print "                             (  or:   A    D    W   S     -       =      [   ] )"
     print "                              (  or:                       -       =      [   ] )"
     composite3D_painter.draw(rvec, tvec, ret,
-                             triangl_idxs, imgp_to_objp_idxs, objp, objp_groups, color_palette, color_palette_size, neg_fy)
+                             triangl_idxs, imgp_to_objp_idxs, objp, objp_colors, objp_groups, color_palette, color_palette_size, neg_fy)
     
-    try:
-        for i in range(1, len(images)):
-            # Frame[i-1] -> Frame[i]
-            print "\nFrame[%s] -> Frame[%s]" % (i-1, i)
-            print "    processing '", images[i], "':"
-            cur_img = cv2.imread(images[i])
-            imgs.append(cur_img)
-            imgs_gray.append(cv2.cvtColor(imgs[-1], cv2.COLOR_BGR2GRAY))
-            ret, base_imgp, new_imgp, triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_groups, group_id, rvec, tvec, rvec_keyfr, tvec_keyfr, base_img = \
-                    handle_new_frame(base_imgp, new_imgp, imgs[-2], imgs_gray[-2], imgs[-1], imgs_gray[-1], triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_groups, group_id, rvec_keyfr, tvec_keyfr, base_img)
-            
-            if ret:
-                rvecs.append(rvec)
-                tvecs.append(tvec)
-                if ret == 2:    # frame is a keyframe
-                    rvecs_keyfr.append(rvec_keyfr)
-                    tvecs_keyfr.append(tvec_keyfr)
-            else:    # frame rejected
-                rvecs.append(None)
-                tvecs.append(None)
-                del imgs[-1]
-                del imgs_gray[-1]
-            
-            # Draw 3D points info of current frame
-            print "Drawing composite 2D image"
-            composite2D_painter.draw(cur_img, rvec, tvec, ret,
-                                    cameraMatrix, distCoeffs, triangl_idxs, nontriangl_idxs, all_idxs_tmp, new_imgp, imgp_to_objp_idxs, objp, objp_groups, group_id, color_palette, color_palette_size)
-            
-            # Draw 3D points info of all frames
-            print "Drawing composite 3D image    (keys: LEFT/RIGHT/UP/DOWN/PAGEUP/PAGEDOWN/HOME/END)"
-            #print "                             (  or:   A    D    W   S     -       =      [   ] )"
-            print "                              (  or:                       -       =      [   ] )"
-            composite3D_painter.draw(rvec, tvec, ret,
-                                    triangl_idxs, imgp_to_objp_idxs, objp, objp_groups, color_palette, color_palette_size, neg_fy)
-    except KeyboardInterrupt:
-        print "Saving trajectory and pointcloud..."
+    for i in range(1, len(images)):
+        # Frame[i-1] -> Frame[i]
+        print "\nFrame[%s] -> Frame[%s]" % (i-1, i)
+        print "    processing '", images[i], "':"
+        cur_img = cv2.imread(images[i])
+        imgs.append(cur_img)
+        imgs_gray.append(cv2.cvtColor(imgs[-1], cv2.COLOR_BGR2GRAY))
+        ret, base_imgp, new_imgp, base_img, triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_colors, objp_groups, group_id, rvec, tvec, rvec_keyfr, tvec_keyfr = \
+                handle_new_frame(base_imgp, new_imgp, base_img, imgs[-2], imgs_gray[-2], imgs[-1], imgs_gray[-1], triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_colors, objp_groups, group_id, rvec_keyfr, tvec_keyfr)
         
-        Ps = []
-        for rvec, tvec in zip(rvecs, tvecs):
-            if rvec == None == tvec:
-                Ps.append(None)    # bad frame
-            else:
-                Ps.append(trfm.P_from_rvec_and_tvec(rvec, tvec))
-        timestps, locations, quaternions = dataset_tools.convert_cam_poses_to_cam_trajectory_TUM(Ps)
-        dataset_tools.save_cam_trajectory_TUM("slam2_out.traj", timestps, locations, quaternions)
+        if ret:
+            rvecs.append(rvec)
+            tvecs.append(tvec)
+            if ret == 2:    # frame is a keyframe
+                rvecs_keyfr.append(rvec_keyfr)
+                tvecs_keyfr.append(tvec_keyfr)
+        else:    # frame rejected
+            rvecs.append(None)
+            tvecs.append(None)
+            del imgs[-1]
+            del imgs_gray[-1]
         
-        objp_group_lifetime = objp_groups.reshape(len(objp_groups), 1) / float(np.max(objp_groups))
-        objp_group_colors = np.concatenate((color_palette[objp_groups % color_palette_size][:, 0:3],
-                                            255 * (0.3 + 0.7 * objp_group_lifetime)), axis=1)    # lifetime as alpha
-        dataset_tools.save_3D_points_to_pcd_file("slam2_out.pcd", objp, objp_group_colors)
+        # Draw 3D points info of current frame
+        print "Drawing composite 2D image"
+        composite2D_painter.draw(cur_img, rvec, tvec, ret,
+                                cameraMatrix, distCoeffs, triangl_idxs, nontriangl_idxs, all_idxs_tmp, new_imgp, imgp_to_objp_idxs, objp, objp_groups, group_id, color_palette, color_palette_size)
         
-        print "Done."
+        # Draw 3D points info of all frames
+        print "Drawing composite 3D image    (view keys: LEFT/RIGHT/UP/DOWN/PAGEUP/PAGEDOWN/HOME/END/C)"
+        #print "                             (       or:   A    D    W   S     -       =      [   ]   )"
+        print "                              (       or:                       -       =      [   ]   )"
+        print "                              (take snapshot of results:           ENTER               )"
+        composite3D_painter.draw(rvec, tvec, ret,
+                                triangl_idxs, imgp_to_objp_idxs, objp, objp_colors, objp_groups, color_palette, color_palette_size, neg_fy)
+        
+        if composite3D_painter.save_results_flag or not (i % 30):    # save results once every 30 frames
+            composite3D_painter.save_results_flag = False
+            print "Saving trajectory and pointcloud..."
+            
+            # Save trajectory
+            Ps = []
+            for rvec, tvec in zip(rvecs, tvecs):
+                if rvec == None == tvec:
+                    Ps.append(None)    # bad frame
+                else:
+                    Ps.append(trfm.P_from_rvec_and_tvec(rvec, tvec))
+            timestps, locations, quaternions = dataset_tools.convert_cam_poses_to_cam_trajectory_TUM(Ps)
+            dataset_tools.save_cam_trajectory_TUM("slam2_out.traj", timestps, locations, quaternions)
+            
+            ## Visualize lifetime by group-number, ...
+            #max_lifetime = float(np.max(objp_groups))
+            #if max_lifetime > 0:
+                #objp_group_lifetime = objp_groups.reshape(len(objp_groups), 1) / max_lifetime
+            #else:
+                #objp_group_lifetime = np.ones((len(objp_groups), 1))
+            
+            # ... or visualize lifetime by 1 if currently triangulated point, 0 otherwise
+            objp_group_lifetime = np.zeros((len(objp_groups), 1))
+            objp_group_lifetime[imgp_to_objp_idxs[np.array(tuple(triangl_idxs))]] = 1
+            
+            # Export colors of the selected color-mode
+            if composite3D_painter.color_mode == 0:
+                colors = objp_colors
+            elif composite3D_painter.color_mode == 1:
+                colors = color_palette[objp_groups % color_palette_size][:, 0:3]
+            
+            # Save pointcloud with BGR colors + lifetime as alpha channel
+            dataset_tools.save_3D_points_to_pcd_file(
+                    "slam2_out.pcd", objp, np.concatenate((
+                    colors,
+                    255 * (0.3 + 0.7 * objp_group_lifetime) ), axis=1) )    # lifetime as alpha
+            
+            print "Done."
 
 
 if __name__ == "__main__":
