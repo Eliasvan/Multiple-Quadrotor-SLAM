@@ -1,0 +1,7 @@
+C170
+----
+
+Manufacturer: Logitech
+Size: 640x480
+Diagonal Field of View (FOV): 58deg
+Focal Length: 2.3 mm
