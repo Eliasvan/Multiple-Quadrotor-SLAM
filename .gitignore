@@ -5,9 +5,10 @@
 *.pyc
 __pycache__/
 
-# Editor cache #
-################
+# Application cache #
+#####################
 .*.kate-swp
+octave-core
 
 # Filebrowser config-files #
 ############################
