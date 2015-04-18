@@ -1,0 +1,10 @@
+# Compiled source #
+###################
+*.o
+*.pyo
+*.pyc
+__pycache__/
+
+# Generated source #
+####################
+*_ext.cpp
