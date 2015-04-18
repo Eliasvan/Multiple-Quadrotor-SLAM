@@ -1,0 +1,2 @@
+To save space in the github repository, only a subset (200 images) of all images are included.
+This is already enough to run some SLAM algorithms.
