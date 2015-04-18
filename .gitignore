@@ -4,3 +4,7 @@
 *.pyo
 *.pyc
 __pycache__/
+
+# Editor cache #
+################
+.*.kate-swp
