@@ -8,3 +8,7 @@ __pycache__/
 # Editor cache #
 ################
 .*.kate-swp
+
+# Filebrowser config-files #
+############################
+.directory
