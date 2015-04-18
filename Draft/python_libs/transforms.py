@@ -15,26 +15,32 @@ def mult_quat(q2, q1):
     """
     qwt = np.zeros((4, 1))
     
-    qwt[0] = q1[0]*q2[3] + q1[3]*q2[0] + q1[1]*q2[2] - q1[2]*q2[1]    # x component
-    qwt[1] = q1[3]*q2[1] - q1[0]*q2[2] + q1[1]*q2[3] + q1[2]*q2[0]    # y component
-    qwt[2] = q1[3]*q2[2] + q1[0]*q2[1] - q1[1]*q2[0] + q1[2]*q2[3]    # z component
+    qwt[0] = q1[3]*q2[0] + q1[0]*q2[3] + q1[2]*q2[1] - q1[1]*q2[2]    # x component
+    qwt[1] = q1[1]*q2[3] - q1[2]*q2[0] + q1[3]*q2[1] + q1[0]*q2[2]    # y component
+    qwt[2] = q1[2]*q2[3] + q1[1]*q2[0] - q1[0]*q2[1] + q1[3]*q2[2]    # z component
     qwt[3] = q1[3]*q2[3] - q1[0]*q2[0] - q1[1]*q2[1] - q1[2]*q2[2]    # w component
     
     return qwt
+
+def conj_quat(qwt):
+    """
+    Return the conjugate quaternion.
+    """
+    qwt_conj = np.array(qwt)
+    
+    qwt_conj[0:3] *= -1
+    
+    return qwt_conj
 
 def inv_quat(qwt):
     """
     Return inverse quaternion.
     """
-    qwt_inv = np.array(qwt)
-    
-    qwt_inv[0:3] *= -1
-    
-    return qwt_inv / (qwt**2).sum()
+    return conj_quat(qwt) / (qwt**2).sum()
 
 def delta_quat(q2, q1):
     """
-    Return the delta quaternion q = q1^-1 * q2.
+    Return the delta quaternion q = q2 * q1^-1.
     
     Equivalent of rotation 'q2' w.r.t. 'q1',
     thus accumulating 'q' to 'q1' yields 'q2'.
@@ -42,11 +48,26 @@ def delta_quat(q2, q1):
     return mult_quat(q2, inv_quat(q1))
 
 
+### Quaternions operating on points
+
+def apply_quat_on_point(qwt, point):
+    """
+    Apply quaternion 'qwt' rotation on 3D point 'point' and return resulting 3D point.
+    """
+    qp = np.zeros((4, 1))
+    
+    qp[0:3] = point.reshape(3, 1)
+    qp_result = mult_quat(qwt, mult_quat(qp, conj_quat(qwt)))
+    
+    return qp_result[0:3]
+
+
 ### Conversions between quaternions and other representations
 
 def quat_from_rvec(rvec):
     """
-    Convert axis-angle represented 'rvec' to a quaternion.
+    Convert axis-angle represented 'rvec' to a quaternion,
+    where 'rvec' is a 3x1 numpy array.
     """
     qwt = np.zeros((4, 1))
 

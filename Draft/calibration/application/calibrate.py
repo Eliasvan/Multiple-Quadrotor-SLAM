@@ -553,7 +553,7 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
             tvec *= -1    # ... and change direction to "WORLD center -> CAMERA center"
             
             # Calculate pose relative to last keyframe
-            rvec_rel = -trfm.delta_rvec(-rvec, -rvec_prev)    # calculate the inverse of the rotation between subsequent "WORLD -> CAMERA" rotations
+            rvec_rel = trfm.delta_rvec(rvec, rvec_prev)
             tvec_rel = tvec - tvec_prev
             
             # Extract axis and angle, to enhance representation
