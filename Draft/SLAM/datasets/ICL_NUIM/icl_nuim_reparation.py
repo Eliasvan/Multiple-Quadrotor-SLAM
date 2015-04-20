@@ -11,6 +11,7 @@ import dataset_tools
 
 """ File- import functions """
 
+
 def load_cam_poses_POV(filename):
     """
     Load bash-script of PovRay commands, used to generate the ground-truth camera trajectories,
@@ -49,6 +50,7 @@ def load_cam_poses_POV(filename):
 
 """ File-conversion functions, mostly to fix up files """
 
+
 def mirror_wavefront_obj_file(filename_in, filename_out):
     """
     Mirror the X-coordinates of the given Wavefront .OBJ-file "filename_in",
@@ -74,6 +76,7 @@ def mirror_wavefront_obj_file(filename_in, filename_out):
     
     open(filename_out, 'w').write('\n'.join(lines))
 
+
 def repair_ICL_NUIM_cam_trajectory(filename_in, filename_out,
                                    initial_location=None,
                                    rebuild_timestamps=True, delta_timestamp=0., fps=30):
@@ -84,14 +87,14 @@ def repair_ICL_NUIM_cam_trajectory(filename_in, filename_out,
     
     "filename_in" : filename of the input camera trajectory
     "filename_out" : filename of the repaired output camera trajectory
-    "initial_location" : (optional) location of the first camera pose
+    "initial_location" : location of the first camera pose
         Note that all ICL NUIM camera trajectories are undetermined up to an unknown translation.
         To find the correct "initial_location", you can do the following:
             Ps = load_cam_poses_POV("traj1.posesRenderingCommands.sh")
             _, locs_exact, _ = dataset_tools.convert_cam_poses_to_cam_trajectory_TUM(Ps)
-            initial_location = [-locs_exact[0][0], locs_exact[0][1], locs_exact[0][2]]
+            initial_location = [-locs_exact[0, 0], locs_exact[0, 1], locs_exact[0, 2]]
     "rebuild_timestamps" :
-        (optional) if True, regenerate timestamps starting from start-time "delta_timestamp",
+        if True, regenerate timestamps starting from start-time "delta_timestamp",
         at a rate of "fps"
     
     The new "timestps", "locations", "quaternions" will be returned.
@@ -101,24 +104,28 @@ def repair_ICL_NUIM_cam_trajectory(filename_in, filename_out,
     """
     timestps, locations, quaternions = dataset_tools.load_cam_trajectory_TUM(filename_in)
     
-    if initial_location:
-        dlx, dly, dlz = np.array(initial_location) - np.array(locations[0])
+    if initial_location != None:
+        delta_location = initial_location - locations[0]
     else:
-        dlx = dly = dlz = 0
+        delta_location = np.zeros(3)
     
     if rebuild_timestamps:
-        timestps = list(delta_timestamp + np.arange(len(timestps)) / float(fps))
+        timestps = delta_timestamp + (1 + np.arange(len(timestps))) / float(fps)
     
     for i, (location, quaternion) in enumerate(zip(locations, quaternions)):
         lx, ly, lz = location
-        locations[i] = [lx + dlx, ly + dly, -lz + dlz]
+        locations[i] = np.array([lx, ly, -lz]) + delta_location
         
         qx, qy, qz, qw = quaternion
-        quaternions[i] = [qw, qz, qy, -qx]
+        quaternions[i] = np.array([qw, qz, qy, -qx])
     
-    dataset_tools.save_cam_trajectory_TUM(filename_out, timestps, locations, quaternions)
+    dataset_tools.save_cam_trajectory_TUM(filename_out, (timestps, locations, quaternions))
     return timestps, locations, quaternions
 
+
+def join_path(*path_list):
+    """Convenience function for creating OS-indep relative paths."""
+    return os.path.relpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), *path_list))
 
 
 def main():
@@ -130,8 +137,8 @@ def main():
     print "Mirroring 3D model..."
     
     mirror_wavefront_obj_file(
-            os.path.join("living_room_obj_mtl", "living-room.obj"),
-            os.path.join("living_room_obj_mtl", "living-room_Xmirrored.obj") )
+            join_path("living_room_obj_mtl", "living-room.obj"),
+            join_path("living_room_obj_mtl", "living-room_Xmirrored.obj") )
     
     print "Extracting exact ground-truth camera trajectories..."
     
@@ -143,20 +150,20 @@ def main():
     
     for i, pov_bash_script_filename in enumerate(pov_bash_script_filenames):
         dataset_tools.save_cam_trajectory_TUM(
-                os.path.join("living_room_traj%sn_frei_png" % i, "livingRoom%sn.gt.freiburg_exact" % i),
-                *dataset_tools.convert_cam_poses_to_cam_trajectory_TUM(load_cam_poses_POV(
-                        os.path.join("living_room_code", pov_bash_script_filename) )))
+                join_path("living_room_traj%sn_frei_png" % i, "livingRoom%sn.gt.freiburg_exact" % i),
+                dataset_tools.convert_cam_poses_to_cam_trajectory_TUM(load_cam_poses_POV(
+                        join_path("living_room_code", pov_bash_script_filename) )) )
     
     if "--repair-noisy-trajectories" in sys.argv:
         print "Repairing (noisy) camera trajectories..."
         
         for i, pov_bash_script_filename in enumerate(pov_bash_script_filenames):
             _, locs_exact, _ = dataset_tools.convert_cam_poses_to_cam_trajectory_TUM(
-                    load_cam_poses_POV(os.path.join("living_room_code", pov_bash_script_filename)) )
+                    load_cam_poses_POV(join_path("living_room_code", pov_bash_script_filename)) )
             repair_ICL_NUIM_cam_trajectory(
-                    os.path.join("living_room_traj%sn_frei_png" % i, "livingRoom%sn.gt.freiburg" % i),
-                    os.path.join("living_room_traj%sn_frei_png" % i, "livingRoom%sn.gt.freiburg_repaired" % i),
-                    [-locs_exact[0][0], locs_exact[0][1], locs_exact[0][2]] )
+                    join_path("living_room_traj%sn_frei_png" % i, "livingRoom%sn.gt.freiburg" % i),
+                    join_path("living_room_traj%sn_frei_png" % i, "livingRoom%sn.gt.freiburg_repaired" % i),
+                    np.array([-locs_exact[0, 0], locs_exact[0, 1], locs_exact[0, 2]]) )
     
     print "Done."
 

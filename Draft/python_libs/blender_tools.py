@@ -266,20 +266,27 @@ def create_cam_trajectory(name,
         restore_ob_selection(*ob_selection_backup)
 
 def load_and_create_cam_trajectory(filename, name_prefix="", strip_file_extension=False,
-                                   start_frame=1, fps="data", no_keyframe_highlighting=True,
-                                   goto_last_keyframe=False):
+                                   start_frame=1, start_time=None, fps="data",
+                                   no_keyframe_highlighting=True, goto_last_keyframe=False):
     """
     Load a camera trajectory (in the TUM format, see "dataset_tools" module for more info)
     with filename "filename", and create it in Blender.
     
     "name_prefix", "strip_file_extension" : see documentation of "object_name_from_filename()"
-    "start_frame" : start frame of the trajectory
+    "start_frame" : Blender's start frame of the trajectory
+    "start_time" : if not None, this float will be used as trajectory's timestamp offset to start from
     "fps" : should be one of the following:
             - "blender" : infer the fps from Blender's scene "fps" property
             - "data" : infer the fps from the data (using minimum delta time), Blender's "fps" will be adjusted
             - an integer indicating the data's fps
     "no_keyframe_highlighting" : if True, don't show framenumbers for each keyframe along trajectory
     "goto_last_keyframe" : go to the last keyframe of the generated trajectory
+    
+    Note: to synchronize multiple trajectories in time,
+    it is advised to set:
+            - "start_frame" to 0
+            - "start_time" to 0.
+            - "fps" to the exact fps integer
     """
     
     timestps, locations, quaternions = dataset_tools.load_cam_trajectory_TUM(filename)
@@ -289,13 +296,14 @@ def load_and_create_cam_trajectory(filename, name_prefix="", strip_file_extensio
     elif len(timestps) == 1:
         framenrs = [start_frame]
     else:
-        timestps = np.array(timestps)
         if fps == "blender":
             fps = bpy.context.scene.render.fps
         elif fps == "data":
             fps = 1. / np.min(timestps[1:] - timestps[:-1])
             bpy.context.scene.render.fps = int(round(fps))
-        framenrs = np.rint(start_frame + (timestps - timestps[0]) * float(fps)).astype(int)
+        if start_time == None:
+            start_time = timestps[0]
+        framenrs = np.rint(start_frame + (timestps - start_time) * float(fps)).astype(int)
     
     create_cam_trajectory(
             object_name_from_filename(filename, name_prefix, strip_file_extension),

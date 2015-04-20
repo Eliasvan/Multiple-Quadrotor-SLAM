@@ -129,18 +129,18 @@ int BenchmarkNode::runFromFolder()
     
     // run SVO (pose estimation)
     std::list<FramePtr> frames;
-    int frame_id = 0;
+    int frame_counter = 1;
     for (std::map<std::string, std::string>::iterator it = sorted_imgs.begin(); it != sorted_imgs.end(); ++it)
     {
         // load image
         boost::filesystem::path img_path = img_dir_path / boost::filesystem::path(it->second.c_str());
-        if (!frame_id)
+        if (frame_counter == 1)
             std::cout << "reading image " << img_path.string() << std::endl;
         cv::Mat img(cv::imread(img_path.string(), 0));
         assert(!img.empty());
 
         // process frame
-        vo_->addImage(img, frame_id / (double)fps_);
+        vo_->addImage(img, frame_counter / (double)fps_);
 
         // display tracking quality
         if (vo_->lastFrame() != NULL) {
@@ -150,7 +150,7 @@ int BenchmarkNode::runFromFolder()
             frames.push_back(vo_->lastFrame());
         }
         
-        frame_id++;
+        frame_counter++;
     }
     
     // create new depth-filter, to construct the pointcloud based on the final poses
@@ -163,9 +163,20 @@ int BenchmarkNode::runFromFolder()
     
     // write trajectories to file, and run depth-filter
     std::ofstream ofs_traj(traj_out_file_.c_str());
-    frame_id = 0;
+    frame_counter = 1 + 10;
     for (std::list<FramePtr>::iterator frame=frames.begin(); frame!=frames.end(); ++frame)
     {
+        Eigen::Matrix<double, 6, 6> cov = (*frame)->Cov_;
+        bool skip_frame = false;
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 6; j++)
+                if (! ((1.e-16 < fabs(cov(i,j))) && (fabs(cov(i,j)) < 1.e+16)) )    // likely an invalid pose
+                    skip_frame = true;
+        if (skip_frame) {
+            frame_counter++;
+            continue;
+        }
+        
         // access the pose of the camera via vo_->lastFrame()->T_f_w_.
         Sophus::SE3 world_transf = (*frame)->T_f_w_.inverse();
         Eigen::Quaterniond quat = world_transf.unit_quaternion();
@@ -178,12 +189,13 @@ int BenchmarkNode::runFromFolder()
                   << std::endl;
         
         // once in 10 frames, add a keyframe to the depth-filter
-        if (frame_id % 10)
-            depth_filter_->addFrame(*frame);
-        else
+        if (frame_counter > 10) {
+            frame_counter = 1;
             depth_filter_->addKeyframe(*frame, 2, 0.5);
+        } else
+            depth_filter_->addFrame(*frame);
         
-        frame_id++;
+        frame_counter++;
     }
 
     /*

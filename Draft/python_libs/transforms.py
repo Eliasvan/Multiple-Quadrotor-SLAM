@@ -5,7 +5,15 @@ import cv2
 
 
 
-### Quaternion transformations
+""" Quaternion transformations """
+
+
+def unit_quat():
+    """
+    Return a unit quaternion (qx, qy, qz, qw) = (0, 0, 0, 1).
+    """
+    return np.eye(4)[3]
+
 
 def mult_quat(q2, q1):
     """
@@ -22,6 +30,7 @@ def mult_quat(q2, q1):
     
     return qwt
 
+
 def conj_quat(qwt):
     """
     Return the conjugate quaternion.
@@ -32,11 +41,13 @@ def conj_quat(qwt):
     
     return qwt_conj
 
+
 def inv_quat(qwt):
     """
     Return inverse quaternion.
     """
     return conj_quat(qwt) / (qwt**2).sum()
+
 
 def delta_quat(q2, q1):
     """
@@ -48,7 +59,8 @@ def delta_quat(q2, q1):
     return mult_quat(q2, inv_quat(q1))
 
 
-### Quaternions operating on points
+""" Quaternions operating on points """
+
 
 def apply_quat_on_point(qwt, point):
     """
@@ -62,7 +74,8 @@ def apply_quat_on_point(qwt, point):
     return qp_result[0:3]
 
 
-### Conversions between quaternions and other representations
+""" Conversions between quaternions and other representations """
+
 
 def quat_from_rvec(rvec):
     """
@@ -79,6 +92,7 @@ def quat_from_rvec(rvec):
         qwt[3] = 1.
     
     return qwt
+
 
 def rvec_from_quat(qwt):
     """
@@ -101,6 +115,7 @@ def rvec_from_quat(qwt):
     
     return rvec * angle
 
+
 def axis_and_angle_from_rvec(rvec):
     """
     Return the axis vector and angle of the axis-angle represented 'rvec'.
@@ -119,7 +134,8 @@ def axis_and_angle_from_rvec(rvec):
     return axis, angle
 
 
-### Axis-angle transformations
+""" Axis-angle transformations """
+
 
 def delta_rvec(r2, r1):
     """
@@ -131,7 +147,8 @@ def delta_rvec(r2, r1):
             quat_from_rvec(r1) ))
 
 
-### Perspective transformations
+""" Perspective transformations """
+
 
 def P_from_R_and_t(R, t):
     """
@@ -147,6 +164,7 @@ def P_from_R_and_t(R, t):
     
     return P
 
+
 def P_inv(P):
     """
     Return the inverse of a 4x4 P matrix (projection matrix).
@@ -158,6 +176,7 @@ def P_inv(P):
     t = -R.dot(P[0:3, 3:4])
     
     return P_from_R_and_t(R, t)
+
 
 def delta_P(P2, P1):
     """
@@ -173,6 +192,7 @@ def delta_P(P2, P1):
     P[3, 3] = 1    # make sure this is one
     
     return P
+
 
 def project_points(points, K, image_size, P, round=True):
     """
@@ -202,6 +222,7 @@ def project_points(points, K, image_size, P, round=True):
     
     return points_proj, status
 
+
 def projection_depth(points, P):
     """
     Return the (Z) depth of the projections of 3D points array via 4x4 P camera projection matrix.
@@ -215,13 +236,15 @@ def projection_depth(points, P):
     return points_depth.reshape(-1)
 
 
-### Conversions between camera pose projection matrices P and other representations
+""" Conversions between camera pose projection matrices P and other representations """
+
 
 def P_from_rvec_and_tvec(rvec, tvec):
     """
     Return the 4x4 P camera projection matrix from OpenCV's camera's 'rvec' and 'tvec'.
     """
     return P_from_R_and_t(cv2.Rodrigues(rvec)[0], tvec)
+
 
 def P_from_pose_TUM(q, l):
     """
@@ -241,6 +264,7 @@ def P_from_pose_TUM(q, l):
     P = P_inv(M)
     
     return P
+
 
 def pose_TUM_from_P(P):
     """

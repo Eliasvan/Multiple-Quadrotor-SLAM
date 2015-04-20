@@ -80,10 +80,24 @@ $ cd ../../..
 Running on the "sin2_tex2_h1_v8_d" dataset
 ------------------------------------------
 
-Open a terminal in directory "/Draft/SLAM/datasets/SVO/sin2_tex2_h1_v8_d", then run:
+Open a terminal in directory "/Draft/SLAM/datasets/SVO/sin2_tex2_h1_v8_d/", then run:
 $ $SVO_INSTALL_PATH/../rpg_svo/svo/bin/run_pipeline  ./img/ ./traj_out-SVO.txt ./map_out-SVO.pcd  50  752 480  315.5 315.5 376.0 240.0
 
 The results can be visualized using the "visualize.blend" file, and running the embedded Python script.
+
+Note that the generated trajectory's poses are unknown upto
+a common transformation by a rotation, scale, and translation.
+To find this transformation and align the generated trajectory with the groundtruth one,
+and also apply this transformation on the generated map, run:
+$ ../../../tools/align_traj_and_map_to_groundtruth.py ./traj_groundtruth.txt ./traj_out-SVO.txt -m ./map_out-SVO.pcd -o 1.0
+
+This will generate the following files: "./traj_out-SVO-trfm.txt" and "./map_out-SVO-trfm.pcd".
+Note that we supplied an offset-time of 1 second ("-o 1.0") to estimate the scale as well,
+because we assume after the first second the pose-estimation still has low error.
+
+Numerical evaluation of the results can be done:
+$ ../../../tools/tum_benchmark_tools/evaluate_ate.py ./traj_groundtruth.txt ./traj_out-SVO-trfm.txt --verbose --plot ./results_ate-SVO.pdf > ./results_ate-SVO.txt
+$ ../../../tools/tum_benchmark_tools/evaluate_rpe.py ./traj_groundtruth.txt ./traj_out-SVO-trfm.txt --verbose --fixed_delta --plot ./results_rpe-SVO.pdf > ./results_rpe-SVO.txt
 
 
 Running on the ICL_NUIM "livingroom" dataset, 4th trajectory
@@ -96,3 +110,8 @@ And even then the trajectory was not continuously tracked, and the map is almost
 
 Open a terminal in directory "/Draft/SLAM/datasets/ICL_NUIM/living_room_traj3n_frei_png/", then run:
 $ $SVO_INSTALL_PATH/../rpg_svo/svo/bin/run_pipeline  ./rgb/ ./traj_out-SVO.txt ./map_out-SVO.pcd  30  640 480  481.20 -480.00 319.50 239.50
+
+Similar procedure to obtain numerical results can be followed:
+$ ../../../tools/align_traj_and_map_to_groundtruth.py ./livingRoom3n.gt.freiburg_exact ./traj_out-SVO.txt -m ./map_out-SVO.pcd -f 40 -o 1.0
+$ ../../../tools/tum_benchmark_tools/evaluate_ate.py ./livingRoom3n.gt.freiburg_exact ./traj_out-SVO-trfm.txt --verbose --plot ./results_ate-SVO.pdf > ./results_ate-SVO.txt
+$ ../../../tools/tum_benchmark_tools/evaluate_rpe.py ./livingRoom3n.gt.freiburg_exact ./traj_out-SVO-trfm.txt --verbose --fixed_delta --plot ./results_rpe-SVO.pdf > ./results_rpe-SVO.txt

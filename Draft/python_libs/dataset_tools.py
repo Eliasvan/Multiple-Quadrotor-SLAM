@@ -3,21 +3,33 @@ import numpy as np
 
 
 
+""" Helper functions """
+
+
+def _cam_trajectory_to_numpy(timestps, locations, quaternions):
+    """Convenience function to convert python lists to numpy arrays."""
+    if timestps:
+        return np.array(timestps, dtype=float), np.array(locations, dtype=float), np.array(quaternions, dtype=float)
+    else:
+        return np.empty((0), dtype=float), np.empty((0, 3), dtype=float), np.empty((0, 4), dtype=float)
+
+
 """ File- import/export functions """
+
 
 def load_cam_trajectory_TUM(filename):
     """
     Load (e.g. ground-truth) camera trajectories from file "filename",
     the format is specified on "http://vision.in.tum.de/data/datasets/rgbd-dataset/file_formats".
     
-    Returns the following lists: "timestps", "locations", and "quaternions".
+    Returns the following numpy arrays: "timestps", "locations", and "quaternions".
     
     Note: some typical filenames of the ICL NUIM dataset compatible with this function, are:
     "livingRoom1.gt.freiburg", "traj1.gt.freiburg", ...
     """
     timestps, locations, quaternions = [], [], []
     
-    lines = open(filename, 'r').read().replace(",", " ").replace("\t", " ").split('\n')
+    lines = open(filename, 'r').read().replace(',', ' ').replace('\t', ' ').split('\n')
     for line in lines:
         line = line.strip()
         
@@ -30,20 +42,23 @@ def load_cam_trajectory_TUM(filename):
         locations.append([lx, ly, lz])
         quaternions.append([qx, qy, qz, qw])
     
-    return timestps, locations, quaternions
+    return _cam_trajectory_to_numpy(timestps, locations, quaternions)
 
-def save_cam_trajectory_TUM(filename, timestps, locations, quaternions):
+
+def save_cam_trajectory_TUM(filename, cam_trajectory):
     """
-    Save (e.g. ground-truth) camera trajectories to file "filename",
+    Save (e.g. ground-truth) camera trajectory "cam_trajectory" to file "filename",
     the format is specified on "http://vision.in.tum.de/data/datasets/rgbd-dataset/file_formats".
+    
+    "cam_trajectory" should consist of the following numpy arrays: "timestps", "locations", and "quaternions".
     """
     
     out = '\n'.join([
-            ' '.join(map(str, [timestp] + l + q))
-            for timestp, l, q in zip(timestps, locations, quaternions)
-    ]) + '\n'
+            ' '.join(map(str, (timestp,) + tuple(l) + tuple(q)))
+            for timestp, l, q in zip(*cam_trajectory) ]) + '\n'
     
     open(filename, 'w').write(out)
+
 
 def load_3D_points_from_pcd_file(filename, use_alpha=False):
     """
@@ -115,6 +130,8 @@ def load_3D_points_from_pcd_file(filename, use_alpha=False):
                          len(lines), num_points)
     
     points = np.array([tuple(map(float, line.split(' '))) for line in lines], dtype=np.float32)
+    if not len(points):
+        return np.zeros((0, 3), dtype=np.float32), None, False    # no points found
     
     found_alpha = False
     if use_colors:
@@ -127,6 +144,7 @@ def load_3D_points_from_pcd_file(filename, use_alpha=False):
         colors = None
     
     return points, colors, found_alpha
+
 
 def save_3D_points_to_pcd_file(filename, points, colors=None):
     """
@@ -200,10 +218,13 @@ try:
 except ImportError:
     print ("Warning: can't load modules \"cv2\" or \"transforms\" required for some functions of \"dataset_tools\" module.")
 
+
 def convert_cam_poses_to_cam_trajectory_TUM(Ps, fps=30):
     """
     Convert camera pose projection matrices "Ps" to camera trajectories in TUM format,
     the result can be saved with "save_cam_trajectory_TUM()".
+    
+    Timestamp of first pose starts at 1.0 / fps.
     """
     timestps, locations, quaternions = [], [], []
     
@@ -211,10 +232,120 @@ def convert_cam_poses_to_cam_trajectory_TUM(Ps, fps=30):
         if P == None:
             continue
         
-        timestps.append(float(i) / fps)
+        timestps.append(float(1 + i) / fps)
         
         q, t = trfm.pose_TUM_from_P(P)
         locations.append(list(t.reshape(-1)))
         quaternions.append(list(q.reshape(-1)))
+    
+    return _cam_trajectory_to_numpy(timestps, locations, quaternions)
+
+
+def transform_between_cam_trajectories(cam_trajectory_from, cam_trajectory_to,
+                                       at_frame=1, at_time=None,
+                                       infer_scale=True, offset_frames=None, offset_time=float("inf")):
+    """
+    Returns the transformation ("delta_quaternion", "delta_scale", "delta_location") (apply from left to right)
+    between two camera trajectories "cam_trajectory_from" and "cam_trajectory_to",
+    of which the format is given by the output of "load_cam_trajectory_TUM()".
+    
+    "at_frame" or "at_time" : moment at which the translation and rotation are calculated
+    "at_frame" : frame number, starting from 1; set to None if "at_time" is used instead
+    "at_time" : timestamp in seconds; set to None if "at_frame" is used instead
+    
+    "infer_scale" : set to True if the scale should also be calculated;
+                    requires one of following offsets to be set:
+    "offset_frames" or "offset_time" : offset between first and second moment
+    "offset_frames" : frames inbetween both moments; set to None if "offset_time" is used instead
+    "offset_time" : seconds inbetween both moments; set to None if "offset_frames" is used instead
+    
+    Note: in case "at_frame" or "offset_frames" is used,
+    the corresponding timestamps of the "to" trajectory are used.
+    In case a timestamp at first or second moment of one of the trajectories
+    is out of range of the other trajectory,
+    the moments are adjusted such that the timestamps between trajectories match as good as possible.
+    """
+    ts_from, locs_from, quats_from = cam_trajectory_from
+    ts_to, locs_to, quats_to = cam_trajectory_to
+    
+    # Return unit transformation, if one of the trajectories is empty
+    if not len(ts_from) or not len(ts_to):
+        return trfm.unit_quat().reshape(4), 1., np.zeros(3)
+    
+    def closest_element_index(array, element):
+        return (np.abs(array - element)).argmin()
+    
+    # Get time and frame indices at first moment
+    if at_frame != None:
+        at_frame_to = max(0, min(at_frame - 1, len(ts_to) - 1))    # to Python indexing
+    elif at_time != None:
+        at_frame_to = closest_element_index(ts_to, at_time)
+    at_frame_from = closest_element_index(ts_from, ts_to[at_frame_to])
+    at_frame_to = closest_element_index(ts_to, ts_from[at_frame_from])    # make sure both are close to eachother
+    at_time = ts_to[at_frame_to]    # trajectory "to" is considered as the groundtruth one, hence the preference
+    
+    # Calculate rotation and fetch location, at first moment
+    delta_quaternion = trfm.delta_quat(
+            quats_to[at_frame_to].reshape(4, 1), quats_from[at_frame_from].reshape(4, 1) )
+    location_from = locs_from[at_frame_from]
+    location_to = locs_to[at_frame_to]
+    
+    delta_scale = 1.
+    if infer_scale:
+        # Get frame indices at second moment; implementation analogue to first moment
+        if offset_frames != None:
+            scnd_frame_to = max(0, min(at_frame_to + offset_frames, len(ts_to) - 1))
+        elif offset_time != None:
+            scnd_frame_to = closest_element_index(ts_to, at_time + offset_time)
+        scnd_frame_from = closest_element_index(ts_from, ts_to[scnd_frame_to])
+        scnd_frame_to = closest_element_index(ts_to, ts_from[scnd_frame_from])
+        
+        # Calculate scale:
+        # first the "from" trajectory is transformed such that
+        # the cam poses of both trajectories are equal at the first moment,
+        # then the translation-vectors between first and second moment are calculated for both trajectories, ...
+        inbetween_location_from = trfm.apply_quat_on_point(
+                delta_quaternion, locs_from[scnd_frame_from] - locs_from[at_frame_from] ).reshape(3)
+        inbetween_location_to   = locs_to[scnd_frame_to] - locs_to[at_frame_to]
+        # ... then the translation-vector of the "to" trajectory is projection on
+        # the normalized translation-vector of the "from" trajectory,
+        # and the delta_scale is defined by the ratio of the length of this projection-vector,
+        # with the length of the translation-vector of the "to" trajectory.
+        nominator   = inbetween_location_from.dot(inbetween_location_to)
+        denominator = inbetween_location_from.dot(inbetween_location_from)
+        if denominator != 0:
+            delta_scale = nominator / denominator
+    
+    # Return transformation: translation, rotation and scale
+    delta_location = location_to - delta_scale * trfm.apply_quat_on_point(delta_quaternion, location_from).reshape(3)
+    return delta_quaternion.reshape(4), delta_scale, delta_location
+
+
+def transformed_points(points, transformation):
+    """
+    Return the transformation "transformation" applied on 3D points "points",
+    where "transformation" equals ("delta_quaternion", "delta_scale", "delta_location") (apply from left to right).
+    """
+    delta_quaternion, delta_scale, delta_location = transformation
+    delta_quaternion = delta_quaternion.reshape(4, 1)
+    
+    return np.array([
+            delta_location + delta_scale * trfm.apply_quat_on_point(delta_quaternion, p).reshape(3)
+            for p in points ])
+
+
+def transformed_cam_trajectory(cam_trajectory, transformation):
+    """
+    Return the transformation "transformation" applied on camera trajectory "cam_trajectory",
+    where the format of "cam_trajectory" is given by the output of "load_cam_trajectory_TUM()",
+    and "transformation" equals ("delta_quaternion", "delta_scale", "delta_location") (apply from left to right).
+    """
+    timestps, locations, quaternions = cam_trajectory
+    delta_quaternion, delta_scale, delta_location = transformation
+    delta_quaternion = delta_quaternion.reshape(4, 1)
+    
+    timestps = np.array(timestps)
+    locations = transformed_points(locations, transformation)
+    quaternions = np.array([trfm.mult_quat(delta_quaternion, q).reshape(4) for q in quaternions])
     
     return timestps, locations, quaternions

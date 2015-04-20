@@ -673,6 +673,11 @@ def parse_cmd_args():
     parser.add_argument("-p", "--init-pose-file", dest="init_pose_file",
                         help="path to the ASCII file containing the 4x4 matrix of the initial camera pose")
     
+    parser.add_argument("-f", "--fps", dest="fps",
+                        type=int, default=30,
+                        help="rate (frames per second) at which the input images were captured"
+                             "(default: 30)")
+    
     parser.add_argument("-t", "--traj-out-file", dest="traj_out_file",
                         help="filepath of the output camera trajectory, in TUM format")
     parser.add_argument("-m", "--map-out-file", dest="map_out_file",
@@ -680,8 +685,8 @@ def parse_cmd_args():
     
     # Parse arguments
     args = parser.parse_args()
-    img_dir, calib_file, init_chessboard_size_x, init_chessboard_size_y, init_objp_file, init_pose_file, traj_out_file, map_out_file = \
-            args.img_dir, args.calib_file, args.init_chessboard_size_x, args.init_chessboard_size_y, args.init_objp_file, args.init_pose_file, args.traj_out_file, args.map_out_file
+    img_dir, calib_file, init_chessboard_size_x, init_chessboard_size_y, init_objp_file, init_pose_file, fps, traj_out_file, map_out_file = \
+            args.img_dir, args.calib_file, args.init_chessboard_size_x, args.init_chessboard_size_y, args.init_objp_file, args.init_pose_file, args.fps, args.traj_out_file, args.map_out_file
     
     # A chessboard will be used in this case
     if (init_chessboard_size_x or init_chessboard_size_y):
@@ -704,7 +709,7 @@ def parse_cmd_args():
         init_chessboard_size = None
         init_files = (init_objp_file, init_pose_file)
     
-    return img_dir, calib_file, init_chessboard_size, init_files, traj_out_file, map_out_file
+    return img_dir, calib_file, init_chessboard_size, init_files, fps, traj_out_file, map_out_file
 
 
 def main():
@@ -717,7 +722,7 @@ def main():
     global max_solvePnP_outlier_ratio, max_2nd_solvePnP_outlier_ratio, solvePnP_use_extrinsic_guess
     
     # Parse command-line arguments
-    img_dir, calib_file, init_chessboard_size, init_files, traj_out_file, map_out_file = parse_cmd_args()
+    img_dir, calib_file, init_chessboard_size, init_files, fps, traj_out_file, map_out_file = parse_cmd_args()
     
     # Load camera intrinsics
     cameraMatrix, distCoeffs, imageSize = calibration_tools.load_camera_intrinsics(calib_file)
@@ -907,8 +912,8 @@ def main():
                         Ps.append(None)    # bad frame
                     else:
                         Ps.append(trfm.P_from_rvec_and_tvec(rvec, tvec))
-                timestps, locations, quaternions = dataset_tools.convert_cam_poses_to_cam_trajectory_TUM(Ps)
-                dataset_tools.save_cam_trajectory_TUM(traj_out_file, timestps, locations, quaternions)
+                cam_trajectory = dataset_tools.convert_cam_poses_to_cam_trajectory_TUM(Ps, fps)
+                dataset_tools.save_cam_trajectory_TUM(traj_out_file, cam_trajectory)
                 print "Done."
             
             # Save map
