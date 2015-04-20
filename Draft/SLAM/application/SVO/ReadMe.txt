@@ -112,6 +112,6 @@ Open a terminal in directory "/Draft/SLAM/datasets/ICL_NUIM/living_room_traj3n_f
 $ $SVO_INSTALL_PATH/../rpg_svo/svo/bin/run_pipeline  ./rgb/ ./traj_out-SVO.txt ./map_out-SVO.pcd  30  640 480  481.20 -480.00 319.50 239.50
 
 Similar procedure to obtain numerical results can be followed:
-$ ../../../tools/align_traj_and_map_to_groundtruth.py ./livingRoom3n.gt.freiburg_exact ./traj_out-SVO.txt -m ./map_out-SVO.pcd -f 40 -o 1.0
+$ ../../../tools/align_traj_and_map_to_groundtruth.py ./livingRoom3n.gt.freiburg_exact ./traj_out-SVO.txt -m ./map_out-SVO.pcd -o 1.0
 $ ../../../tools/tum_benchmark_tools/evaluate_ate.py ./livingRoom3n.gt.freiburg_exact ./traj_out-SVO-trfm.txt --verbose --plot ./results_ate-SVO.pdf > ./results_ate-SVO.txt
 $ ../../../tools/tum_benchmark_tools/evaluate_rpe.py ./livingRoom3n.gt.freiburg_exact ./traj_out-SVO-trfm.txt --verbose --fixed_delta --plot ./results_rpe-SVO.pdf > ./results_rpe-SVO.txt
