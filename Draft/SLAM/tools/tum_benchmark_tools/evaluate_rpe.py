@@ -373,7 +373,7 @@ if __name__ == '__main__':
         import matplotlib.pylab as pylab
         fig = plt.figure()
         ax = fig.add_subplot(111)        
-        ax.plot(stamps - stamps[0],trans_error,'-',color="blue")
+        ax.plot(stamps,trans_error,'-',color="blue")
         #ax.plot([t for t,e in err_rot],[e for t,e in err_rot],'-',color="red")
         ax.set_xlabel('time [s]')
         ax.set_ylabel('translational error [m]')
