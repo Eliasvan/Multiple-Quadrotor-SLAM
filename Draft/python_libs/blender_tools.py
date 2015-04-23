@@ -265,7 +265,7 @@ def create_cam_trajectory(name,
     if not select_ob:
         restore_ob_selection(*ob_selection_backup)
 
-def load_and_create_cam_trajectory(filename, name_prefix="", strip_file_extension=False,
+def load_and_create_cam_trajectory(filename, name_prefix="", strip_file_extension=True,
                                    start_frame=1, start_time=None, fps="data",
                                    no_keyframe_highlighting=True, goto_last_keyframe=False):
     """

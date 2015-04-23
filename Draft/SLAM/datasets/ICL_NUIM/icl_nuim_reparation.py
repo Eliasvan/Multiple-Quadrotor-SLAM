@@ -150,7 +150,7 @@ def main():
     
     for i, pov_bash_script_filename in enumerate(pov_bash_script_filenames):
         dataset_tools.save_cam_trajectory_TUM(
-                join_path("living_room_traj%sn_frei_png" % i, "livingRoom%sn.gt.freiburg_exact" % i),
+                join_path("living_room_traj%sn_frei_png" % i, "traj_groundtruth%s.txt" % i),
                 dataset_tools.convert_cam_poses_to_cam_trajectory_TUM(load_cam_poses_POV(
                         join_path("living_room_code", pov_bash_script_filename) )) )
     

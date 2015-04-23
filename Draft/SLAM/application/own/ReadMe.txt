@@ -30,5 +30,5 @@ Press ESCAPE in Blender to stop 'live-mode'.
 
 Numerical evaluation of the results can be done,
 first open a terminal in "/Draft/SLAM/datasets/ICL_NUIM/living_room_traj3n_frei_png", then run:
-$ ../../../tools/tum_benchmark_tools/evaluate_ate.py ./livingRoom3n.gt.freiburg_exact ./traj_out-slam2.txt --verbose --plot ./results_ate-slam2.pdf > ./results_ate-slam2.txt
-$ ../../../tools/tum_benchmark_tools/evaluate_rpe.py ./livingRoom3n.gt.freiburg_exact ./traj_out-slam2.txt --verbose --fixed_delta --plot ./results_rpe-slam2.pdf > ./results_rpe-slam2.txt
+$ ../../../tools/tum_benchmark_tools/evaluate_ate.py ./traj_groundtruth3.txt ./traj_out-slam2.txt --verbose --plot ./results_ate-slam2.pdf > ./results_ate-slam2.txt
+$ ../../../tools/tum_benchmark_tools/evaluate_rpe.py ./traj_groundtruth3.txt ./traj_out-slam2.txt --verbose --fixed_delta --plot ./results_rpe-slam2.pdf > ./results_rpe-slam2.txt

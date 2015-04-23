@@ -75,10 +75,10 @@ Repair and Conversion
 
 Execute the "icl_nuim_reparation.py" script, this will generate:
 - "living_room_obj_mtl/living-room_Xmirrored.obj"    = 3D model
-- "living_room_traj0n_frei_png/livingRoom0n.gt.freiburg_exact"    = ground-truth camera trajectory 0 in TUM format  
-- "living_room_traj1n_frei_png/livingRoom1n.gt.freiburg_exact"    = ground-truth camera trajectory 1 in TUM format
-- "living_room_traj2n_frei_png/livingRoom2n.gt.freiburg_exact"    = ground-truth camera trajectory 2 in TUM format
-- "living_room_traj3n_frei_png/livingRoom3n.gt.freiburg_exact"    = ground-truth camera trajectory 3 in TUM format
+- "living_room_traj0n_frei_png/traj_groundtruth0.txt"    = ground-truth camera trajectory 0 in TUM format  
+- "living_room_traj1n_frei_png/traj_groundtruth1.txt"    = ground-truth camera trajectory 1 in TUM format
+- "living_room_traj2n_frei_png/traj_groundtruth2.txt"    = ground-truth camera trajectory 2 in TUM format
+- "living_room_traj3n_frei_png/traj_groundtruth3.txt"    = ground-truth camera trajectory 3 in TUM format
 
 
 Visualization in Blender
@@ -110,7 +110,7 @@ import sys; sys.path.append(bpy.path.abspath("//../../../python_libs"))
 import blender_tools
 # Load the camera trajectory and create such camera trajectory
 blender_tools.load_and_create_cam_trajectory(bpy.path.abspath(
-        "//living_room_traj3n_frei_png/livingRoom3n.gt.freiburg_exact" ))
+        "//living_room_traj3n_frei_png/traj_groundtruth3.txt" ))
 
 Then right-click on the code and select "Run Script".
 The camera trajectory is now created,

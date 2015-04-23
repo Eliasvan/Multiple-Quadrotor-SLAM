@@ -6,10 +6,13 @@ import numpy as np
 """ Helper functions """
 
 
-def _cam_trajectory_to_numpy(timestps, locations, quaternions):
+def _cam_trajectory_to_numpy(timestps, locations, quaternions, normalize_quaternions=False):
     """Convenience function to convert python lists to numpy arrays."""
     if timestps:
-        return np.array(timestps, dtype=float), np.array(locations, dtype=float), np.array(quaternions, dtype=float)
+        quaternions = np.array(quaternions, dtype=float)
+        if normalize_quaternions:
+            quaternions /= np.linalg.norm(quaternions, axis=1).reshape(len(quaternions), 1)
+        return np.array(timestps, dtype=float), np.array(locations, dtype=float), quaternions
     else:
         return np.empty((0), dtype=float), np.empty((0, 3), dtype=float), np.empty((0, 4), dtype=float)
 
@@ -42,7 +45,7 @@ def load_cam_trajectory_TUM(filename):
         locations.append([lx, ly, lz])
         quaternions.append([qx, qy, qz, qw])
     
-    return _cam_trajectory_to_numpy(timestps, locations, quaternions)
+    return _cam_trajectory_to_numpy(timestps, locations, quaternions, normalize_quaternions=True)
 
 
 def save_cam_trajectory_TUM(filename, cam_trajectory):
@@ -273,7 +276,12 @@ def transform_between_cam_trajectories(cam_trajectory_from, cam_trajectory_to,
         return trfm.unit_quat().reshape(4), 1., np.zeros(3)
     
     def closest_element_index(array, element):
-        return (np.abs(array - element)).argmin()
+        if abs(element) != float("inf"):
+            return (np.abs(array - element)).argmin()
+        elif element == float("inf"):
+            return len(array) - 1
+        else:    # element == float("-inf")
+            return 0
     
     # Get time and frame indices at first moment
     if at_frame != None:
