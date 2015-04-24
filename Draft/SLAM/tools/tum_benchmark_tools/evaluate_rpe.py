@@ -372,11 +372,17 @@ if __name__ == '__main__':
         import matplotlib.pyplot as plt
         import matplotlib.pylab as pylab
         fig = plt.figure()
-        ax = fig.add_subplot(111)        
+        ax = fig.add_subplot(111)
         ax.plot(stamps,trans_error,'-',color="blue")
-        #ax.plot([t for t,e in err_rot],[e for t,e in err_rot],'-',color="red")
         ax.set_xlabel('time [s]')
-        ax.set_ylabel('translational error [m]')
+        ax.set_ylabel('translational error [m]',color="blue")
+        for tl in ax.get_yticklabels():
+            tl.set_color("blue")
+        ax = ax.twinx()
+        ax.plot(stamps,rot_error * 180.0 / numpy.pi,'-',color="red")
+        ax.set_ylabel('rotational error [deg]',color="red")
+        for tl in ax.get_yticklabels():
+            tl.set_color("red")
         plt.savefig(args.plot,dpi=300)
         
 
