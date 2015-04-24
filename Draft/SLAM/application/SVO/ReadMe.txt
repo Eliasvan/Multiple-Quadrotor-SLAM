@@ -96,7 +96,7 @@ Note that we supplied an offset-time of 1 second ("-o 1.0") to estimate the scal
 because we assume after the first second the pose-estimation still has low error.
 
 Numerical evaluation of the results can be done:
-$ ../../../tools/tum_benchmark_tools/evaluate_ate.py ./traj_groundtruth.txt ./traj_out-SVO-trfm.txt --verbose --plot ./results_ate-SVO.pdf > ./results_ate-SVO.txt
+$ ../../../tools/tum_benchmark_tools/evaluate_ate.py ./traj_groundtruth.txt ./traj_out-SVO-trfm.txt --verbose --plot ./results_ate-SVO.pdf --plot_original > ./results_ate-SVO.txt
 $ ../../../tools/tum_benchmark_tools/evaluate_rpe.py ./traj_groundtruth.txt ./traj_out-SVO-trfm.txt --verbose --fixed_delta --plot ./results_rpe-SVO.pdf > ./results_rpe-SVO.txt
 
 
@@ -113,5 +113,5 @@ $ $SVO_INSTALL_PATH/../rpg_svo/svo/bin/run_pipeline  ./rgb/ ./traj_out-SVO.txt .
 
 Similar procedure to obtain numerical results can be followed:
 $ ../../../tools/align_traj_and_map_to_groundtruth.py ./traj_groundtruth3.txt ./traj_out-SVO.txt -m ./map_out-SVO.pcd -o 1.0
-$ ../../../tools/tum_benchmark_tools/evaluate_ate.py ./traj_groundtruth3.txt ./traj_out-SVO-trfm.txt --verbose --plot ./results_ate-SVO.pdf > ./results_ate-SVO.txt
+$ ../../../tools/tum_benchmark_tools/evaluate_ate.py ./traj_groundtruth3.txt ./traj_out-SVO-trfm.txt --verbose --plot ./results_ate-SVO.pdf --plot_original > ./results_ate-SVO.txt
 $ ../../../tools/tum_benchmark_tools/evaluate_rpe.py ./traj_groundtruth3.txt ./traj_out-SVO-trfm.txt --verbose --fixed_delta --plot ./results_rpe-SVO.pdf > ./results_rpe-SVO.txt

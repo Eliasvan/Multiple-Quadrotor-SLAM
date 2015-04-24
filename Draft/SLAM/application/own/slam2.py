@@ -30,9 +30,10 @@ def keypoint_mask(points):
     for p in points:
         circle(mask_img, p, keypoint_coverage_radius, False, thickness=-1)
     # <DEBUG: visualize mask>    TODO: remove
-    print "countZero:", cv2.countNonZero(mask_img), "(total):", mask_img.size
-    cv2.imshow("img", mask_img*255)
-    cv2.waitKey()
+    if __debug__:
+        print "countZero:", cv2.countNonZero(mask_img), "(total):", mask_img.size
+        cv2.imshow("img", mask_img*255)
+        cv2.waitKey()
     # </DEBUG>
     return mask_img
 
@@ -146,7 +147,7 @@ class Composite3DPainter:
         self.K[0:2, 2] = np.array(imageSize_view) / 2.    # set cam principal point
         self.cams_pos = np.empty((0, 3))    # caching of cam trajectory
         self.cams_pos_keyfr = np.empty((0, 3))    # caching of cam trajectory
-        self.color_mode = 1    # 0 means BGR colors, 1 means objp_group colors
+        self.color_mode = 0    # 0 means BGR colors, 1 means objp_group colors
         
         self.save_results_flag = False    # TODO: move this to other class
     
@@ -430,14 +431,15 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
         return False, base_imgp, prev_imgp, base_img, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_colors, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr
     
     # <DEBUG: visualize reprojection error>    TODO: remove
-    reproj_error, imgp_reproj1 = reprojection_error(filtered_triangl_objp, filtered_triangl_imgp, cameraMatrix, distCoeffs, rvec_, tvec_)
-    print "solvePnP reproj_error:", reproj_error
-    i3 = np.array(new_img)
-    try:
-        for imgppr, imgppp in zip(filtered_triangl_imgp, imgp_reproj1): line(i3, imgppr.T, imgppp.T, rgb(255,0,0))
-    except OverflowError: print "WARNING: OverflowError!"
-    cv2.imshow("img", i3)
-    cv2.waitKey()
+    if __debug__:
+        reproj_error, imgp_reproj1 = reprojection_error(filtered_triangl_objp, filtered_triangl_imgp, cameraMatrix, distCoeffs, rvec_, tvec_)
+        print "solvePnP reproj_error:", reproj_error
+        i3 = np.array(new_img)
+        try:
+            for imgppr, imgppp in zip(filtered_triangl_imgp, imgp_reproj1): line(i3, imgppr.T, imgppp.T, rgb(255,0,0))
+        except OverflowError: print "WARNING: OverflowError!"
+        cv2.imshow("img", i3)
+        cv2.waitKey()
     # </DEBUG>
     
     # ... then do solvePnP() on inliers, to get the current frame's pose estimation, ...
@@ -458,19 +460,21 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
         return False, base_imgp, prev_imgp, base_img, triangl_idxs_old, nontriangl_idxs_old, imgp_to_objp_idxs, all_idxs_tmp_old, objp, objp_colors, objp_groups, group_id, None, None, rvec_keyfr, tvec_keyfr
     
     # <DEBUG: verify poses by reprojection error>    TODO: remove
-    i0 = drawAxisSystem(np.array(new_img), cameraMatrix, distCoeffs, rvec, tvec)
-    try:
-        for imgppp in imgp_reproj1: circle(i0, imgppp.T, 2, rgb(255,0,0), thickness=-1)
-    except OverflowError: print "WARNING: OverflowError!"
-    for imgppp in imgp_reproj : circle(i0, imgppp.T, 2, rgb(0,255,255), thickness=-1)
-    print "cur img check"
-    cv2.imshow("img", i0)
-    cv2.waitKey()
+    if __debug__:
+        i0 = drawAxisSystem(np.array(new_img), cameraMatrix, distCoeffs, rvec, tvec)
+        try:
+            for imgppp in imgp_reproj1: circle(i0, imgppp.T, 2, rgb(255,0,0), thickness=-1)
+        except OverflowError: print "WARNING: OverflowError!"
+        for imgppp in imgp_reproj : circle(i0, imgppp.T, 2, rgb(0,255,255), thickness=-1)
+        print "cur img check"
+        cv2.imshow("img", i0)
+        cv2.waitKey()
     # </DEBUG>
     
     # <DEBUG: verify OpticalFlow motion on preserved inliers>    TODO: remove
-    cv2.imshow("img", drawKeypointsAndMotion(new_img, base_imgp[all_idxs_tmp], new_imgp, rgb(0,0,255)))
-    cv2.waitKey()
+    if __debug__:
+        cv2.imshow("img", drawKeypointsAndMotion(new_img, base_imgp[all_idxs_tmp], new_imgp, rgb(0,0,255)))
+        cv2.waitKey()
     # </DEBUG>
     
     # Check whether we got a new keyframe
@@ -485,19 +489,22 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             imgp0 = base_imgp[nontriangl_idxs_array]    # collect corresponding image-points of last keyframe
             imgp1 = idxs_get_new_imgp_by_idxs(nontriangl_idxs, new_imgp, all_idxs_tmp)    # collect corresponding image-points of current frame
             # <DEBUG: check sanity of input to triangulation function>    TODO: remove
-            check_triangulation_input(base_img, new_img, imgp0, imgp1, rvec_keyfr, tvec_keyfr, rvec, tvec, cameraMatrix, distCoeffs)
+            if __debug__:
+                check_triangulation_input(base_img, new_img, imgp0, imgp1, rvec_keyfr, tvec_keyfr, rvec, tvec, cameraMatrix, distCoeffs)
             # </DEBUG>
             imgpnrm0 = cv2.undistortPoints(np.array([imgp0]), cameraMatrix, distCoeffs)[0]    # undistort and normalize to homogenous coordinates
             imgpnrm1 = cv2.undistortPoints(np.array([imgp1]), cameraMatrix, distCoeffs)[0]
             objp_done, objp_done_status = iterative_LS_triangulation(    # triangulate
                     imgpnrm0, trfm.P_from_R_and_t(Rodrigues(rvec_keyfr), tvec_keyfr),    # data from last keyframe
                     imgpnrm1, trfm.P_from_R_and_t(Rodrigues(rvec), tvec) )               # data from current frame
-            print "objp_done_status:", objp_done_status
             inliers_objp_done = np.where(objp_done_status == 1)[0]
+            if __debug__:
+                print "objp_done_status:", objp_done_status
             
             # <DEBUG: check reprojection error of the new freshly triangulated points, based on both pose estimates of keyframe and current cam>    TODO: remove
-            print "triangl_reproj_error 0:", reprojection_error(objp_done, imgp0, cameraMatrix, distCoeffs, rvec_keyfr, tvec_keyfr)[0]
-            print "triangl_reproj_error 1:", reprojection_error(objp_done, imgp1, cameraMatrix, distCoeffs, rvec, tvec)[0]
+            if __debug__:
+                print "triangl_reproj_error 0:", reprojection_error(objp_done, imgp0, cameraMatrix, distCoeffs, rvec_keyfr, tvec_keyfr)[0]
+                print "triangl_reproj_error 1:", reprojection_error(objp_done, imgp1, cameraMatrix, distCoeffs, rvec, tvec)[0]
             # </DEBUG>
             
             # ... filter out outliers based on Iterative-LS triangulation convergence, and whether points are in front of all cameras, ...
@@ -512,13 +519,15 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             # ... then do solvePnP() on all preserved points ('inliers') to refine pose estimation, ...
             ret, rvec, tvec = cv2.solvePnP(    # perform solvePnP(), we start from the initial pose estimation
                     filtered_triangl_objp_tmp, filtered_triangl_imgp_tmp, cameraMatrix, distCoeffs, rvec, tvec, useExtrinsicGuess=True )
-            print "total triangl_reproj_error 1 refined:", reprojection_error(filtered_triangl_objp_tmp, filtered_triangl_imgp_tmp, cameraMatrix, distCoeffs, rvec, tvec)[0]    # TODO: remove
+            if __debug__:
+                print "total triangl_reproj_error 1 refined:", reprojection_error(filtered_triangl_objp_tmp, filtered_triangl_imgp_tmp, cameraMatrix, distCoeffs, rvec, tvec)[0]    # TODO: remove
             
             # ... then do re-triangulation of 'inliers_objp_done' using refined pose estimation.
             objp_done, objp_done_status = iterative_LS_triangulation(    # triangulate
                     imgpnrm0, trfm.P_from_R_and_t(Rodrigues(rvec_keyfr), tvec_keyfr),    # data from last keyframe
                     imgpnrm1, trfm.P_from_R_and_t(Rodrigues(rvec), tvec) )               # data from current frame
-            print "objp_done_status refined:", objp_done_status
+            if __debug__:
+                print "objp_done_status refined:", objp_done_status
             
             ## Uncomment this to re-filter triangulation output, otherwise ...
             #inliers_objp_done = np.where(objp_done_status == 1)[0]
@@ -553,21 +562,23 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
                     (objp_done, objp_colors_done, objp_groups_done), preserve_idxs - triangl_idxs, (objp, objp_colors, objp_groups), imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
             
             ## <DEBUG: check intermediate outlier filtering>    TODO: remove
-            #i4 = np.array(new_img)
-            #objp_test = objp[imgp_to_objp_idxs[np.array(sorted(triangl_idxs))]]
-            #imgp_test = idxs_get_new_imgp_by_idxs(triangl_idxs, new_imgp, all_idxs_tmp)
-            ##print imgp_test - filtered_triangl_imgp
-            #reproj_error, imgp_reproj4 = reprojection_error(objp_test, imgp_test, cameraMatrix, distCoeffs, rvec, tvec)
-            #print "checking both 2", reproj_error
-            #for imgppr, imgppp in zip(imgp_test, imgp_reproj4): line(i4, imgppr.T, imgppp.T, rgb(255,0,0))
-            #cv2.imshow("img", i4)
-            #cv2.waitKey()
+            #if __debug__:
+                #i4 = np.array(new_img)
+                #objp_test = objp[imgp_to_objp_idxs[np.array(sorted(triangl_idxs))]]
+                #imgp_test = idxs_get_new_imgp_by_idxs(triangl_idxs, new_imgp, all_idxs_tmp)
+                ##print imgp_test - filtered_triangl_imgp
+                #reproj_error, imgp_reproj4 = reprojection_error(objp_test, imgp_test, cameraMatrix, distCoeffs, rvec, tvec)
+                #print "checking both 2", reproj_error
+                #for imgppr, imgppp in zip(imgp_test, imgp_reproj4): line(i4, imgppr.T, imgppp.T, rgb(255,0,0))
+                #cv2.imshow("img", i4)
+                #cv2.waitKey()
             ## </DEBUG>
         
         # Check whether we should add new image-points
         mask_img = keypoint_mask(new_imgp)    # generate mask that covers all image-points (with a certain radius)
-        print "coverage:", 1 - cv2.countNonZero(mask_img)/float(mask_img.size)    # TODO: remove: unused
         to_add = target_amount_keypoints - len(new_imgp)    # limit the amount of to-be-added image-points
+        if __debug__:
+            print "coverage:", 1 - cv2.countNonZero(mask_img)/float(mask_img.size)    # TODO: remove: unused
         
         # Add new image-points
         if to_add > 0:
@@ -582,8 +593,9 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
                 imgp_extra, base_imgp, new_imgp, imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
         
         # <DEBUG: visualize newly added points>    TODO: remove
-        cv2.imshow("img", cv2.drawKeypoints(new_img, [cv2.KeyPoint(p[0],p[1], 7.) for p in imgp_extra], color=rgb(0,0,255)))
-        cv2.waitKey()
+        if __debug__:
+            cv2.imshow("img", cv2.drawKeypoints(new_img, [cv2.KeyPoint(p[0],p[1], 7.) for p in imgp_extra], color=rgb(0,0,255)))
+            cv2.waitKey()
         # </DEBUG>
         
         # Now this frame becomes the base (= keyframe)
@@ -593,6 +605,51 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
     
     # Successfully return
     return True + int(is_keyframe), base_imgp, new_imgp, base_img, triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_colors, objp_groups, group_id, rvec, tvec, rvec_keyfr, tvec_keyfr
+
+
+def write_output(traj_out_file, fps, rvecs, tvecs,
+                 map_out_file, triangl_idxs, imgp_to_objp_idxs, objp, color_mode, color_palette, color_palette_size, objp_groups, objp_colors):
+    # Save trajectory
+    if traj_out_file:
+        print "Saving trajectory..."
+        Ps = []
+        for rvec, tvec in zip(rvecs, tvecs):
+            if rvec == None == tvec:
+                Ps.append(None)    # bad frame
+            else:
+                Ps.append(trfm.P_from_rvec_and_tvec(rvec, tvec))
+        cam_trajectory = dataset_tools.convert_cam_poses_to_cam_trajectory_TUM(Ps, fps)
+        dataset_tools.save_cam_trajectory_TUM(traj_out_file, cam_trajectory)
+        print "Done."
+    
+    # Save map
+    if map_out_file:
+        print "Saving map pointcloud..."
+        
+        ## Visualize lifetime by group-number, ...
+        #max_lifetime = float(np.max(objp_groups))
+        #if max_lifetime > 0:
+            #objp_group_lifetime = objp_groups.reshape(len(objp_groups), 1) / max_lifetime
+        #else:
+            #objp_group_lifetime = np.ones((len(objp_groups), 1))
+        
+        # ... or visualize lifetime by 1 if currently triangulated point, 0 otherwise
+        objp_group_lifetime = np.zeros((len(objp_groups), 1))
+        objp_group_lifetime[imgp_to_objp_idxs[np.array(tuple(triangl_idxs))]] = 1
+        
+        # Export colors of the selected color-mode
+        if color_mode == 0:
+            colors = objp_colors
+        elif color_mode == 1:
+            colors = color_palette[objp_groups % color_palette_size][:, 0:3]
+        
+        # Save pointcloud with BGR colors + lifetime as alpha channel
+        dataset_tools.save_3D_points_to_pcd_file(
+                map_out_file, objp, np.concatenate((
+                colors,
+                255 * (0.3 + 0.7 * objp_group_lifetime) ), axis=1) )    # lifetime as alpha
+        
+        print "Done."
 
 
 def parse_cmd_args():
@@ -606,15 +663,15 @@ def parse_cmd_args():
     class ExampleUsage:
         
         def __init__(self, img_dir, calib_file,
-                     init_chessboard_size=None, init_files=None, traj_out_file=None, map_out_file=None):
+                     init_chessboard_size=None, init_files=None, fps=None, traj_out_file=None, map_out_file=None):
             """
             "init_chessboard_size" : a (init_chessboard_size_x, init_chessboard_size_y) tuple,
                                      or None if inferred from init-files, see next
             "init_files" : a (init_points_file (.pcd), init_pose_file (.txt)) tuple,
                            or None if inferred from chessboard
             """
-            self.img_dir, self.calib_file, self.init_chessboard_size, self.init_files, self.traj_out_file, self.map_out_file = \
-                    img_dir, calib_file, init_chessboard_size, init_files, traj_out_file, map_out_file
+            self.img_dir, self.calib_file, self.init_chessboard_size, self.init_files, self.fps, self.traj_out_file, self.map_out_file = \
+                    img_dir, calib_file, init_chessboard_size, init_files, fps, traj_out_file, map_out_file
         
         def generate(self):
             out = "\t %s %s %s " % (sys.argv[0], join_path(self.img_dir), join_path(self.calib_file))
@@ -622,6 +679,8 @@ def parse_cmd_args():
                 out += "-sx %s -sy %s " % tuple(self.init_chessboard_size)
             if self.init_files:
                 out += "-o %s -p %s " % tuple(map(join_path, self.init_files))
+            if self.fps:
+                out += "-f %s " % self.fps
             if self.traj_out_file:
                 out += "-t %s " % join_path(self.traj_out_file)
             if self.map_out_file:
@@ -638,6 +697,17 @@ def parse_cmd_args():
             ("..", "..", "..", "ARDrone2_tests", "flying_front", "lowres", "drone0"),
             ("..", "..", "..", "ARDrone2_tests", "camera_calibration", "live_video", "camera_intrinsics_front.txt"),
             init_chessboard_size=(8, 6) ))
+    example_usages.append(ExampleUsage(    # example of using the SVO dataset
+            ("..", "..", "datasets", "SVO", "sin2_tex2_h1_v8_d", "img"),
+            ("..", "..", "datasets", "SVO", "camera_intrinsics.txt"),
+            init_files=(
+                    ("..", "..", "datasets", "SVO", "sin2_tex2_h1_v8_d", "init_points.pcd"),
+                    ("..", "..", "datasets", "SVO", "sin2_tex2_h1_v8_d", "init_pose.txt") ),
+            fps=50,
+            traj_out_file=
+            ("..", "..", "datasets", "SVO", "sin2_tex2_h1_v8_d", "traj_out-slam2.txt"),
+            map_out_file=
+            ("..", "..", "datasets", "SVO", "sin2_tex2_h1_v8_d", "map_out-slam2.pcd") ))
     example_usages.append(ExampleUsage(    # example of using the ICL_NUIM living-room dataset (4th trajectory)
             ("..", "..", "datasets", "ICL_NUIM", "living_room_traj3n_frei_png", "rgb"),
             ("..", "..", "datasets", "ICL_NUIM", "camera_intrinsics.txt"),
@@ -683,10 +753,21 @@ def parse_cmd_args():
     parser.add_argument("-m", "--map-out-file", dest="map_out_file",
                         help="filepath of the output 3D map, in PCD format (pointcloud)")
     
+    parser.add_argument("-l", "--live-update-period", dest="live_update_period",
+                        type=int, default=30,
+                        help="number of frames between each save to the output files; set to 0 to disable (default: 30)")
+    parser.add_argument("-d", "--use-debug", dest="use_debug",
+                        type=int, default=1,
+                        help="show debug prints and images (default: 1)")
+    
     # Parse arguments
     args = parser.parse_args()
-    img_dir, calib_file, init_chessboard_size_x, init_chessboard_size_y, init_objp_file, init_pose_file, fps, traj_out_file, map_out_file = \
-            args.img_dir, args.calib_file, args.init_chessboard_size_x, args.init_chessboard_size_y, args.init_objp_file, args.init_pose_file, args.fps, args.traj_out_file, args.map_out_file
+    img_dir, calib_file, init_chessboard_size_x, init_chessboard_size_y, init_objp_file, init_pose_file, fps, traj_out_file, map_out_file, live_update_period, use_debug = \
+            args.img_dir, args.calib_file, args.init_chessboard_size_x, args.init_chessboard_size_y, args.init_objp_file, args.init_pose_file, args.fps, args.traj_out_file, args.map_out_file, args.live_update_period, args.use_debug
+    
+    # If debug is not desired, but the application is running in debug-mode, restart app in optimized mode
+    if not use_debug and __debug__:
+        os.execv(sys.executable, ["python", "-O"] + sys.argv)
     
     # A chessboard will be used in this case
     if (init_chessboard_size_x or init_chessboard_size_y):
@@ -709,7 +790,7 @@ def parse_cmd_args():
         init_chessboard_size = None
         init_files = (init_objp_file, init_pose_file)
     
-    return img_dir, calib_file, init_chessboard_size, init_files, fps, traj_out_file, map_out_file
+    return img_dir, calib_file, init_chessboard_size, init_files, fps, traj_out_file, map_out_file, live_update_period
 
 
 def main():
@@ -722,7 +803,8 @@ def main():
     global max_solvePnP_outlier_ratio, max_2nd_solvePnP_outlier_ratio, solvePnP_use_extrinsic_guess
     
     # Parse command-line arguments
-    img_dir, calib_file, init_chessboard_size, init_files, fps, traj_out_file, map_out_file = parse_cmd_args()
+    img_dir, calib_file, init_chessboard_size, init_files, fps, traj_out_file, map_out_file, live_update_period = \
+            parse_cmd_args()
     
     # Load camera intrinsics
     cameraMatrix, distCoeffs, imageSize = calibration_tools.load_camera_intrinsics(calib_file)
@@ -846,24 +928,29 @@ def main():
     mask_img = keypoint_mask(new_imgp)
     to_add = target_amount_keypoints - len(new_imgp)
     imgp_extra = cv2.goodFeaturesToTrack(imgs_gray[0], to_add, corner_quality_level, corner_min_dist, None, mask_img).reshape((-1, 2))
-    cv2.imshow("img", cv2.drawKeypoints(imgs[0], [cv2.KeyPoint(p[0],p[1], 7.) for p in imgp_extra], color=rgb(0,0,255)))
-    cv2.waitKey()
+    if __debug__:
+        cv2.imshow("img", cv2.drawKeypoints(imgs[0], [cv2.KeyPoint(p[0],p[1], 7.) for p in imgp_extra], color=rgb(0,0,255)))
+        cv2.waitKey()
     print "added:", len(imgp_extra)
     base_imgp, new_imgp, imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp = idxs_rebase_and_add_imgp(
             imgp_extra, base_imgp, new_imgp, imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
     ret = 2    # indicate keyframe
         
     # Draw 3D points info of current frame
-    print "Drawing composite 2D image"
-    composite2D_painter.draw(imgs[0], rvec, tvec, ret,
-                             cameraMatrix, distCoeffs, triangl_idxs, nontriangl_idxs, all_idxs_tmp, new_imgp, imgp_to_objp_idxs, objp, objp_groups, group_id, color_palette, color_palette_size)
+    if __debug__:
+        print "Drawing composite 2D image"
+        composite2D_painter.draw(
+                imgs[0], rvec, tvec, ret,
+                cameraMatrix, distCoeffs, triangl_idxs, nontriangl_idxs, all_idxs_tmp, new_imgp, imgp_to_objp_idxs, objp, objp_groups, group_id, color_palette, color_palette_size )
     
     # Draw 3D points info of all frames
-    print "Drawing composite 3D image    (keys: LEFT/RIGHT/UP/DOWN/PAGEUP/PAGEDOWN/HOME/END)"
-    #print "                             (  or:   A    D    W   S     -       =      [   ] )"
-    print "                              (  or:                       -       =      [   ] )"
-    composite3D_painter.draw(rvec, tvec, ret,
-                             triangl_idxs, imgp_to_objp_idxs, objp, objp_colors, objp_groups, color_palette, color_palette_size, neg_fy)
+    if __debug__:
+        print "Drawing composite 3D image    (keys: LEFT/RIGHT/UP/DOWN/PAGEUP/PAGEDOWN/HOME/END)"
+        #print "                             (  or:   A    D    W   S     -       =      [   ] )"
+        print "                              (  or:                       -       =      [   ] )"
+        composite3D_painter.draw(
+                rvec, tvec, ret,
+                triangl_idxs, imgp_to_objp_idxs, objp, objp_colors, objp_groups, color_palette, color_palette_size, neg_fy )
     
     for i in range(1, len(images)):
         # Frame[i-1] -> Frame[i]
@@ -888,62 +975,31 @@ def main():
             del imgs_gray[-1]
         
         # Draw 3D points info of current frame
-        print "Drawing composite 2D image"
-        composite2D_painter.draw(cur_img, rvec, tvec, ret,
-                                cameraMatrix, distCoeffs, triangl_idxs, nontriangl_idxs, all_idxs_tmp, new_imgp, imgp_to_objp_idxs, objp, objp_groups, group_id, color_palette, color_palette_size)
+        if __debug__:
+            print "Drawing composite 2D image"
+            composite2D_painter.draw(
+                    cur_img, rvec, tvec, ret,
+                    cameraMatrix, distCoeffs, triangl_idxs, nontriangl_idxs, all_idxs_tmp, new_imgp, imgp_to_objp_idxs, objp, objp_groups, group_id, color_palette, color_palette_size )
         
         # Draw 3D points info of all frames
-        print "Drawing composite 3D image    (view keys: LEFT/RIGHT/UP/DOWN/PAGEUP/PAGEDOWN/HOME/END/C)"
-        #print "                             (       or:   A    D    W   S     -       =      [   ]   )"
-        print "                              (       or:                       -       =      [   ]   )"
-        print "                              (take snapshot of results:           ENTER               )"
-        composite3D_painter.draw(rvec, tvec, ret,
-                                triangl_idxs, imgp_to_objp_idxs, objp, objp_colors, objp_groups, color_palette, color_palette_size, neg_fy)
+        if __debug__:
+            print "Drawing composite 3D image    (view keys: LEFT/RIGHT/UP/DOWN/PAGEUP/PAGEDOWN/HOME/END/C)"
+            #print "                             (       or:   A    D    W   S     -       =      [   ]   )"
+            print "                              (       or:                       -       =      [   ]   )"
+            print "                              (take snapshot of results:           ENTER               )"
+            composite3D_painter.draw(
+                    rvec, tvec, ret,
+                    triangl_idxs, imgp_to_objp_idxs, objp, objp_colors, objp_groups, color_palette, color_palette_size, neg_fy )
         
-        if composite3D_painter.save_results_flag or not (i % 30):    # save results once every 30 frames
+        # Save results once every 30 frames
+        if live_update_period and ((i % live_update_period) == 0 or composite3D_painter.save_results_flag):
             composite3D_painter.save_results_flag = False
-            
-            # Save trajectory
-            if traj_out_file:
-                print "Saving trajectory..."
-                Ps = []
-                for rvec, tvec in zip(rvecs, tvecs):
-                    if rvec == None == tvec:
-                        Ps.append(None)    # bad frame
-                    else:
-                        Ps.append(trfm.P_from_rvec_and_tvec(rvec, tvec))
-                cam_trajectory = dataset_tools.convert_cam_poses_to_cam_trajectory_TUM(Ps, fps)
-                dataset_tools.save_cam_trajectory_TUM(traj_out_file, cam_trajectory)
-                print "Done."
-            
-            # Save map
-            if map_out_file:
-                print "Saving map pointcloud..."
-                
-                ## Visualize lifetime by group-number, ...
-                #max_lifetime = float(np.max(objp_groups))
-                #if max_lifetime > 0:
-                    #objp_group_lifetime = objp_groups.reshape(len(objp_groups), 1) / max_lifetime
-                #else:
-                    #objp_group_lifetime = np.ones((len(objp_groups), 1))
-                
-                # ... or visualize lifetime by 1 if currently triangulated point, 0 otherwise
-                objp_group_lifetime = np.zeros((len(objp_groups), 1))
-                objp_group_lifetime[imgp_to_objp_idxs[np.array(tuple(triangl_idxs))]] = 1
-                
-                # Export colors of the selected color-mode
-                if composite3D_painter.color_mode == 0:
-                    colors = objp_colors
-                elif composite3D_painter.color_mode == 1:
-                    colors = color_palette[objp_groups % color_palette_size][:, 0:3]
-                
-                # Save pointcloud with BGR colors + lifetime as alpha channel
-                dataset_tools.save_3D_points_to_pcd_file(
-                        map_out_file, objp, np.concatenate((
-                        colors,
-                        255 * (0.3 + 0.7 * objp_group_lifetime) ), axis=1) )    # lifetime as alpha
-                
-                print "Done."
+            write_output(traj_out_file, fps, rvecs, tvecs,
+                         map_out_file, triangl_idxs, imgp_to_objp_idxs, objp, composite3D_painter.color_mode, color_palette, color_palette_size, objp_groups, objp_colors)
+    
+    # Save results at the very end
+    write_output(traj_out_file, fps, rvecs, tvecs,
+                 map_out_file, triangl_idxs, imgp_to_objp_idxs, objp, composite3D_painter.color_mode, color_palette, color_palette_size, objp_groups, objp_colors)
 
 
 if __name__ == "__main__":
