@@ -678,7 +678,7 @@ def main():
     #filename_triangl_pose_est_right = join_path("data", "chessboards", "chessboard08.jpg")    # a randomly chosen image
     filename_triangl_pose_est_left = join_path("data", "chessboards_and_nonplanar", "image-0001.jpeg")    # a randomly chosen image
     filename_triangl_pose_est_right = join_path("data", "chessboards_and_nonplanar", "image-0056.jpeg")    # a randomly chosen image
-    filename_base_extrinsics = join_path("data", "chessboards_extrinsic", "chessboard")
+    filename_base_extrinsics = join_path("results", "chessboards_extrinsic", "chessboard")
     filenames_extra_chessboards = (join_path("data", "chessboards_front", "front-*.jpg"),    # sets of calibration images of extra cameras
                                    join_path("data", "chessboards_bottom", "bottom-*.jpg"))
     filenames_extra_intrinsics = (join_path("results", "camera_intrinsics_front.txt"),
