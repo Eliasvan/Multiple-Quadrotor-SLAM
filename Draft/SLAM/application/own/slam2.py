@@ -893,6 +893,10 @@ def main():
     else:
         new_imgp = predef_imgp.astype(np.float32)
     
+    if __debug__:
+        cv2.imshow("img", cv2.drawKeypoints(imgs[0], [cv2.KeyPoint(p[0],p[1], 7.) for p in new_imgp], color=rgb(0,0,255)))
+        cv2.waitKey()
+    
     # Start frame : define a priori 3D points ...
     objp_colors = sample_colors(imgs[0], new_imgp)
     objp_groups = np.zeros(len(new_imgp), dtype=np.int)
