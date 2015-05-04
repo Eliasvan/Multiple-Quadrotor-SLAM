@@ -1,3 +1,5 @@
+import sys
+import traceback
 import os
 from math import radians
 import numpy as np
@@ -556,7 +558,15 @@ def run_file_listener(filepaths, handler, notification="FileListener running", t
                         self._filepath_statuses[i] = filepath_status_new
                 
                 if changed_files:
-                    self._handler(changed_files, self._filepaths, self._filepath_statuses)
+                    try:
+                        self._handler(changed_files, self._filepaths, self._filepath_statuses)
+                    except:
+                        msg = "Exception in handler of %s" % self.__class__.__name__
+                        self.report({"ERROR"}, "%s, check console" % msg)
+                        print ("%s:" % msg)
+                        print ("-" * 60)
+                        traceback.print_exc(file=sys.stdout)
+                        print ("-" * 60)
 
             return {'PASS_THROUGH'}
 

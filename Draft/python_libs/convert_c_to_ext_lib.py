@@ -194,7 +194,8 @@ def create_ext_lib(filename, openmp=False):
     print 'Compiling "%s" to extension module "%s"...' % (filename, module_name)
     print
     for f in os.listdir('.'):
-        if os.path.splitext(f)[0] == module_name and os.path.isfile(f):
+        filename, extension = os.path.splitext(f)
+        if filename == module_name and extension in (".cpp", ".so", ".dylib", ".dll") and os.path.isfile(f):
             os.remove(f)    # remove cpp and library, to force recompilation
     module.compile()
     print "Done."

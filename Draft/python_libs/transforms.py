@@ -255,7 +255,7 @@ def P_from_pose_TUM(q, l):
     """
     M = np.eye(4)
     
-    rvec = rvec_from_quat(np.array(q))
+    rvec = rvec_from_quat(q)
     M[0:3, 0:3] = cv2.Rodrigues(rvec)[0]
     M[0:3, 3] = l
     

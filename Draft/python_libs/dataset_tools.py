@@ -125,12 +125,14 @@ def load_3D_points_from_pcd_file(filename, use_alpha=False):
             break
     
     if entry:
-        raise ValueError("The .pcd-file did not include all neccessary header entries.")
+        raise ValueError("The .pcd-file did not include all necessary header entries.")
     
     lines = lines[i + 1: i + 1 + num_points]    # strip header and other non-data
     if len(lines) < num_points:
+        print (lines[i: i + 1 + num_points])
+        print (i)
         raise ValueError("The .pcd-file did not include all advertised points. (%s instead of %s)" % 
-                         len(lines), num_points)
+                         (len(lines), num_points))
     
     points = np.array([tuple(map(float, line.split(' '))) for line in lines], dtype=np.float32)
     if not len(points):
