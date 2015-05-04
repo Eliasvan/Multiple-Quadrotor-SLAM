@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import os
 from math import tan, asin, pi
 import numpy as np
 from numpy import random
 import scipy.io as sio
 import cv2
 
-import sys; sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "python_libs")
+import sys; sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "python_libs"))
 import transforms as trfm
 import dataset_tools
 import triangulation
@@ -262,7 +263,7 @@ def robustness_stat(errors, statuses):
 
 default_params = {
     "3D_points_source"      : "finite",    # "finite", "infinite", or "scene"
-    "3D_points_r"           : 4,
+    "3D_points_r"           : 4,    # 4 for "finite"; 3 for "scene"
     "3D_points_max_angle"   : pi / 4,
     "3D_points_x_on"        : True,
     "3D_points_y_on"        : True,
@@ -377,8 +378,8 @@ triangl_methods = [    # triangulation methods to test
 ]
 
 num_poses = 40
-max_sideways = 12.
-max_towards = 12.
+max_sideways = 12.    # 12 for "finite"; 11 for "scene" point_source
+max_towards = 12.    # idem
 trajectories = [    # trajectories of 2nd cam
     # Trajectory 1
     cam_trajectory("From 1st cam, to sideways",

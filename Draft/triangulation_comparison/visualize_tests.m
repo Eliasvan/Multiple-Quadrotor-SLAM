@@ -9,17 +9,19 @@ num_triangl_methods = length(triangl_methods);
 num_points = length(points_3D);
 
 l = cell(0);    % legend
-t = cell(0);;    % title
+l2 = cell(0);    % legend without trajectory ids
+t = cell(0);    % title
 for i = 1 : num_traj
     for j = 1 : num_triangl_methods
-        l{j, i} = [strrep(strrep(triangl_methods{j}, '_', ' '), 'triangulation', ''), ': ', 'Trajectory ', num2str(i)];
+        l2{j} = strrep(strrep(triangl_methods{j}, '_', ' '), 'triangulation', '');
+        l{j, i} = [l2{j}, ': ', 'Trajectory ', num2str(i)];
     end
     t{i} = ['Trajectory ', num2str(i), ': ', trajectories{i}.traj_descr];
 end
 
 % Plot RMS vs X- and Y- coordinate
 
-mesh_coord_max = max(max(points_3D(:, 1:3)));
+mesh_coord_max = max(max(abs(points_3D(:, 1:3))));
 mesh_coords = (-mesh_coord_max : mesh_coord_max)';
 mesh_values = NaN * ones(2*mesh_coord_max + 1);    % create mesh with initially invalid values
 idxs = int64(points_3D(:, 1:3)) + mesh_coord_max + 1;
@@ -231,24 +233,46 @@ load test_3
 triangl_methods = cellstr(triangl_methods);
 noise_type_descr = cellstr(noise_type_descr);
 num_noise_types = length(noise_type_descr);
-noise_sigma_values = repmat(noise_sigma_values, [1, num_noise_types]);
+triangl_color_styles = {'b', 'g', 'r', 'c'};
+
+% Plot of RMS 3D error in function of noise sigma: compare triangulation methods
+
+for i = 1 : num_traj
+    figure(7)
+    clf
+
+    hold on
+    for j = 1 : num_triangl_methods
+        plot(noise_sigma_values, squeeze(err3D_median_summary(i, 1, :, j)), [triangl_color_styles{j}, '-'])
+    end
+    hold off
+
+    xlabel('camera 2D noise sigma value [px]')
+    ylabel('Root Median Squared 3D error')
+    legend(l2(:))
+    title(['triangulation with ', noise_type_descr{1}, ' on end-pose of trajectory ', num2str(i)])
+
+    saveas(gcf, ['figures/test3_err3D_traj', num2str(i), '.pdf'])
+end
 
 j = find(strcmp(triangl_methods, 'iterative_LS_triangulation'));
 if length(j)    % iterative_LS exists
     
-    % Plot of RMS 3D error in function of noise sigma
+    % Plot of RMS 3D error in function of noise sigma: compare noise models
+
+    noise_sigma_values_ = repmat(noise_sigma_values, [1, num_noise_types]);
 
     for i = 1 : num_traj
-        figure(7)
+        figure(8)
         clf
 
-        plot(noise_sigma_values, squeeze(err3D_median_summary(i, :, :, j))')
+        plot(noise_sigma_values_, squeeze(err3D_median_summary(i, :, :, j))')
 
         xlabel('camera 2D noise sigma value [px]')
         ylabel('Root Median Squared 3D error')
         legend(noise_type_descr(:))
         title([strrep(triangl_methods{j}, '_', ' '), ' on end-pose of trajectory ', num2str(i)])
 
-        saveas(gcf, ['figures/test3_err3D_traj', num2str(i), '.pdf'])
+        saveas(gcf, ['figures/test3_err3D_', triangl_methods{j}, '_traj', num2str(i), '.pdf'])
     end
 end
