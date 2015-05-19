@@ -108,8 +108,11 @@ def iterative_LS_triangulation(u1, P1, u2, P2, tolerance=3.e-5):
     "tolerance" is the depth convergence tolerance.
     
     Additionally returns a status-vector to indicate outliers:
-        True:  inlier
-        False: outlier
+        1: inlier, and in front of both cameras
+        0: outlier, but in front of both cameras
+        -1: only in front of second camera
+        -2: only in front of first camera
+        -3: not in front of any camera
     Outliers are selected based on non-convergence of depth, and on negativity of depths (=> behind camera(s)).
     
     u1 and u2 are matrices: amount of points equals #rows and should be equal for u1 and u2.
@@ -119,7 +122,7 @@ def iterative_LS_triangulation(u1, P1, u2, P2, tolerance=3.e-5):
     
     # Create array of triangulated points
     x = np.empty((4, len(u1))); x[3, :].fill(1)    # create empty array of homogenous 3D coordinates
-    x_status = np.zeros(len(u1), dtype=int)    # default: mark every point as an outlier
+    x_status = np.empty(len(u1), dtype=int)
     
     # Initialize C matrices
     C1 = np.array(iterative_LS_triangulation_C)
@@ -144,7 +147,7 @@ def iterative_LS_triangulation(u1, P1, u2, P2, tolerance=3.e-5):
         
         for i in range(10):    # Hartley suggests 10 iterations at most
             # Solve for x vector
-            x_old = np.array(x[0:3, xi])    # TODO: remove
+            #x_old = np.array(x[0:3, xi])    # TODO: remove
             cv2.solve(A, b, x[0:3, xi:xi+1], cv2.DECOMP_SVD)
             
             # Calculate new depths
@@ -169,9 +172,6 @@ def iterative_LS_triangulation(u1, P1, u2, P2, tolerance=3.e-5):
                     #1 - abs((d2_new - d2) / (d2 - d1_old)) <= 1.e-2 and \    # TODO: remove
                     #abs(d1_new - d1) <= tolerance and \    # TODO: remove
                     #abs(d2_new - d2) <= tolerance:    # TODO: remove
-                x_status[xi] = (d1_new > 0 and d2_new > 0)    # points should be in front of both cameras
-                if d1_new <= 0: x_status[xi] -= 1    # TODO: remove
-                if d2_new <= 0: x_status[xi] -= 2    # TODO: remove
                 break
             
             # Re-weight A matrix and b vector with the new depths
@@ -181,10 +181,16 @@ def iterative_LS_triangulation(u1, P1, u2, P2, tolerance=3.e-5):
             b[2:4, :] *= 1 / d2_new
             
             # Update depths
-            d_old = d1    # TODO: remove
-            d1_old = d2    # TODO: remove
+            #d_old = d1    # TODO: remove
+            #d1_old = d2    # TODO: remove
             d1 = d1_new
             d2 = d2_new
+        
+        # Set status
+        x_status[xi] = ( i < 10 and                       # points should have converged by now
+                         (d1_new > 0 and d2_new > 0) )    # points should be in front of both cameras
+        if d1_new <= 0: x_status[xi] -= 1
+        if d2_new <= 0: x_status[xi] -= 2
     
     return x[0:3, :].T.astype(output_dtype), x_status
 

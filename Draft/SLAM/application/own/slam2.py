@@ -277,9 +277,9 @@ class Composite3DPainter:
 ### Attempt to simplify re-indexing
 
 def idxs_get_new_imgp_by_idxs(selection_idxs,
-                                new_imgp, all_idxs_tmp):
+                              new_imgp, all_idxs_tmp):
     """Get selection of new_imgp corresponding with selection_idxs (of which elements correspond with idxs in base_imgp).
-    type(selection_idxs) must be "set".
+    type(selection_idxs) must be of type "set".
     """
     new_imgp_sel = np.array([p for p, idx in zip(new_imgp, all_idxs_tmp) if idx in selection_idxs])
     return new_imgp_sel
@@ -287,7 +287,7 @@ def idxs_get_new_imgp_by_idxs(selection_idxs,
 def idxs_update_by_idxs(preserve_idxs,
                         triangl_idxs, nontriangl_idxs, all_idxs_tmp):
     """Only preserve preserve_idxs (elements correspond with idxs in base_imgp).
-    type(preserve_idxs) must be "set".
+    type(preserve_idxs) must be of type "set".
     To update new_imgp, first use idxs_get_new_imgp_by_idxs().
     """
     triangl_idxs &= preserve_idxs
@@ -308,7 +308,7 @@ def idxs_add_objp(objp_extra_container, triangl_idxs_extra,
         objp_container == (objp, objp_colors, objp_groups)
         objp_extra_container == (objp_extra, objp_colors_extra, objp_groups_extra)
     
-    type(triangl_idxs_extra) must be "set".
+    type(triangl_idxs_extra) must be of type "set".
     """
     # NOTICE: see approaches explained in idxs_update_by_idxs() to compare indexing methods
     (objp, objp_colors, objp_groups) = objp_container
@@ -337,6 +337,12 @@ def idxs_rebase_and_add_imgp(imgp_extra,
     base_imgp = new_imgp
     return base_imgp, new_imgp, imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp
 
+class TrackingEvent:
+    def __init__(self, frame_idx, imgp, all_idxs_tmp):
+        self.frame_idx = frame_idx
+        self.imgp = imgp
+        self.all_idxs_tmp = all_idxs_tmp
+
 def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as not-yet triangl points of last keyframe
                      prev_imgp,    # includes 2D points of last frame
                      base_img,    # used for color extraction and debug
@@ -348,7 +354,9 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
                      objp,    # triangulated 3D points
                      objp_colors,    # BGR values of triangulated 3D points
                      objp_groups, group_id,    # corresponding group ids of triangulated 3D points, and current group id
-                     rvec_keyfr, tvec_keyfr):    # rvec and tvec of last keyframe
+                     rvec_keyfr, tvec_keyfr,    # rvec and tvec of last keyframe
+                     tracking_history,    # contains "TrackingEvent"s
+                     frame_idx):    # the current frame index
     
     # Save initial indexing state
     triangl_idxs_old = set(triangl_idxs)
@@ -477,8 +485,26 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
         cv2.waitKey()
     # </DEBUG>
     
+    # Add BA info (2D -> 3D) for current frame
+    underdetermined_system = False
+    if ba_info:
+        tracking_history.append(TrackingEvent(frame_idx, new_imgp, all_idxs_tmp))
+        tracked_triangl_points = idxs_get_new_imgp_by_idxs(triangl_idxs, new_imgp, all_idxs_tmp)
+        ba_info.add_points2D_3Dassoc(tracked_triangl_points, imgp_to_objp_idxs[triangl_idxs_array], frame_idx)
+        
+        ## Assuming 30% of the non-yet-triangulated points will get properly triangulated,
+        ## see whether the to-be-added projective factors in the factor-graph
+        ## will add enough constraints to solve for all tracked poses and nontriangl points.
+        #num_points3D = len(nontriangl_idxs) * 0.30
+        #num_frames = len(tracking_history)
+        #num_unknowns = 3 * num_points3D + 6 * num_frames
+        #num_constraints = 2 * num_points3D * num_frames
+        #if num_unknowns > num_constraints:
+            #underdetermined_system = True
+            #print "Warning (hypothesis): num_unknowns (%s) > num_constraints (%s)" % (num_unknowns, num_constraints)
+    
     # Check whether we got a new keyframe
-    is_keyframe = keyframe_test(base_imgp[all_idxs_tmp], new_imgp)
+    is_keyframe = not underdetermined_system and keyframe_test(base_imgp[all_idxs_tmp], new_imgp)
     print "is_keyframe:", is_keyframe
     if is_keyframe:
         # If some points are not yet triangulated, do it now:
@@ -529,28 +555,41 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             if __debug__:
                 print "objp_done_status refined:", objp_done_status
             
-            ## Uncomment this to re-filter triangulation output, otherwise ...
-            #inliers_objp_done = np.where(objp_done_status == 1)[0]
-            #objp_done = objp_done[inliers_objp_done]
-            #imgp1 = imgp1[inliers_objp_done]
-            #imgpnrm0 = imgpnrm0[inliers_objp_done]
-            #imgpnrm1 = imgpnrm1[inliers_objp_done]
-            ##filtered_triangl_objp = np.concatenate((filtered_triangl_objp, objp_done))    # collect all desired object-points
-            #filtered_triangl_imgp = np.concatenate((filtered_triangl_imgp, imgp1))    # collect corresponding image-points of current frame
-            #nontriangl_idxs_array = nontriangl_idxs_array[inliers_objp_done]
+            # Uncomment this to re-filter triangulation output, otherwise ...
+            inliers_objp_done = np.where(objp_done_status >= 0)[0]    # we only require points to lay in front of cam
+            objp_done = objp_done[inliers_objp_done]
+            imgp1 = imgp1[inliers_objp_done]
+            imgpnrm0 = imgpnrm0[inliers_objp_done]
+            imgpnrm1 = imgpnrm1[inliers_objp_done]
+            #filtered_triangl_objp = np.concatenate((filtered_triangl_objp, objp_done))    # collect all desired object-points
+            filtered_triangl_imgp = np.concatenate((filtered_triangl_imgp, imgp1))    # collect corresponding image-points of current frame
+            nontriangl_idxs_array = nontriangl_idxs_array[inliers_objp_done]
             
-            # ... uncomment this.
-            filtered_triangl_imgp = filtered_triangl_imgp_tmp
+            ## ... uncomment this.
+            #filtered_triangl_imgp = filtered_triangl_imgp_tmp
             
             # Preserve all good indices
-            preserve_idxs = triangl_idxs | set(nontriangl_idxs_array)
+            nontriangl_idxs_done = set(nontriangl_idxs_array)
+            preserve_idxs = triangl_idxs | nontriangl_idxs_done
             
             # <DEBUG: check reprojection error of the new freshly (refined) triangulated points, based on both pose estimates of keyframe and current cam>    TODO: remove
-            if len(inliers_objp_done):
-                imgp0 = imgp0[inliers_objp_done]
-                print "triangl_reproj_error 0 refined:", reprojection_error(objp_done, imgp0, cameraMatrix, distCoeffs, rvec_keyfr, tvec_keyfr)[0]
-                print "triangl_reproj_error 1 refined:", reprojection_error(objp_done, imgp1, cameraMatrix, distCoeffs, rvec, tvec)[0]
+            if __debug__:
+                if len(inliers_objp_done):
+                    imgp0 = imgp0[inliers_objp_done]
+                    print "triangl_reproj_error 0 refined:", reprojection_error(objp_done, imgp0, cameraMatrix, distCoeffs, rvec_keyfr, tvec_keyfr)[0]
+                    print "triangl_reproj_error 1 refined:", reprojection_error(objp_done, imgp1, cameraMatrix, distCoeffs, rvec, tvec)[0]
             # </DEBUG>
+            
+            #if ba_info:
+                ## See whether the to-be-added projective factors in the factor-graph
+                ## add enough constraints to solve for all tracked poses and nontriangl points.
+                #num_points3D = len(nontriangl_idxs_done)
+                #num_frames = len(tracking_history)
+                #num_unknowns = 3 * num_points3D + 6 * num_frames
+                #num_constraints = 2 * num_points3D * num_frames
+                #if num_unknowns > num_constraints:
+                    #print "WARNING: num_unknowns (%s) > num_constraints (%s)" % (num_unknowns, num_constraints)
+                    ## TODO: unmark as a keyframe, restore previous rvec and tvec, and bail out (= return (successfully))
             
             # Update image-points and indices, and store the newly triangulated object-points and assign them the current group id
             new_imgp = filtered_triangl_imgp
@@ -560,6 +599,16 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             objp_groups_done = np.empty((len(objp_done)), dtype=int); objp_groups_done.fill(group_id)    # assign to current 'group_id'
             (objp, objp_colors, objp_groups), imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs = idxs_add_objp(
                     (objp_done, objp_colors_done, objp_groups_done), preserve_idxs - triangl_idxs, (objp, objp_colors, objp_groups), imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
+    
+            # Add BA info (2D -> new 3D) for all frames from previous keyframe to current frame
+            if ba_info:
+                tracking_history[-1] = TrackingEvent(frame_idx, new_imgp, all_idxs_tmp)    # adjust prev tracking event
+                objp_idxs_done = imgp_to_objp_idxs[nontriangl_idxs_array]
+                ba_info.set_point3DAddedIdxs(objp_idxs_done)
+                for event in tracking_history:
+                    tracked_nontriangl_points = idxs_get_new_imgp_by_idxs(
+                            nontriangl_idxs_done, event.imgp, event.all_idxs_tmp )
+                    ba_info.add_points2D_3Dassoc(tracked_nontriangl_points, objp_idxs_done, event.frame_idx)
             
             ## <DEBUG: check intermediate outlier filtering>    TODO: remove
             #if __debug__:
@@ -597,6 +646,15 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             cv2.imshow("img", cv2.drawKeypoints(new_img, [cv2.KeyPoint(p[0],p[1], 7.) for p in imgp_extra], color=rgb(0,0,255)))
             cv2.waitKey()
         # </DEBUG>
+    
+        # Add BA info (odometry) for current frame
+        if ba_info:
+            # TODO: replace with 8-point or 5-point relative pose estimation (+ scale compensation)
+            odometry = trfm.delta_P(trfm.P_from_rvec_and_tvec(rvec, tvec),
+                                    trfm.P_from_rvec_and_tvec(rvec_keyfr, tvec_keyfr))
+            ba_info.add_odometry(odometry, tracking_history[0].frame_idx, frame_idx)
+            del tracking_history[:]    # reset tracking history in case of a new keyframe
+            tracking_history.append(TrackingEvent(frame_idx, new_imgp, all_idxs_tmp))
         
         # Now this frame becomes the base (= keyframe)
         rvec_keyfr = rvec
@@ -649,6 +707,131 @@ def write_output(traj_out_file, fps, rvecs, tvecs,
                 colors,
                 255 * (0.3 + 0.7 * objp_group_lifetime) ), axis=1) )    # lifetime as alpha
         
+        print "Done."
+
+
+class BundleAdjustmentInfoContainer:
+    
+    def __init__(self, base_dir, base_name, num_cams):
+        self.base_dir = base_dir
+        self.base_name = base_name
+        self.num_cams = num_cams
+        
+        self.calibrations = [None] * num_cams
+        self.odometry = []
+        self.odometryAssocs = []
+        self.points2D = [[] for cam in range(num_cams)]
+        self.point2D3DAssocs = [[] for cam in range(num_cams)]
+        self.point3DAddedIdxs = []
+        self.objp_2Dassoc = []    # TODO: move this outside BA, only used for loop closure
+        
+        self.step = -1
+        self.next_step()
+    
+    def next_step(self):
+        self.odometry.append([])
+        self.odometryAssocs.append([])
+        for cam in range(self.num_cams):
+            self.points2D[cam].append(np.zeros((0, 2)))
+            self.point2D3DAssocs[cam].append(np.zeros((0, 3), dtype=int))
+        self.point3DAddedIdxs.append([])
+        self.step += 1
+    
+    def set_calibration(self, K, distCoeffs, cam=0):
+        self.calibrations[cam] = (K, distCoeffs)
+    
+    def add_odometry(self, odometry, from_frame, to_frame, from_cam=0, to_cam=0):
+        self.odometry[self.step].append(odometry)
+        self.odometryAssocs[self.step].append((from_cam, from_frame, to_cam, to_frame))
+    
+    def add_points2D_3Dassoc(self, points2D, point3DIdxs, frame, cam=0):
+        assocs = np.empty((len(points2D), 3), dtype=int)
+        assocs[:, 0] = frame
+        assocs[:, 1] = np.arange(len(self.points2D[cam][frame]), len(self.points2D[cam][frame]) + len(points2D))
+        assocs[:, 2] = point3DIdxs
+        self.points2D[cam][frame] = np.concatenate((self.points2D[cam][frame], points2D))
+        self.point2D3DAssocs[cam][self.step] = np.concatenate((self.point2D3DAssocs[cam][self.step], assocs))
+        for point3DIdx, point2DIdx in zip(point3DIdxs, assocs[:, 1]):
+            self.objp_2Dassoc[point3DIdx].append((cam, frame, point2DIdx))
+    
+    def set_point3DAddedIdxs(self, point3DAddedIdxs):
+        self.point3DAddedIdxs[self.step] = point3DAddedIdxs
+        self.objp_2Dassoc += [[] for i in range(len(point3DAddedIdxs))]
+    
+    def write_file(self, title, lines, cam=-1, omit_base_name=False):
+        lines.append("")    # empty line at end
+        filename = "BA_info.%s%s%s.txt" % (
+                title, (".cam%s" % cam) * (cam > -1), ("-%s" % self.base_name) * (not omit_base_name) )
+        open(os.path.join(self.base_dir, filename), 'w').write('\n'.join(lines))
+    
+    def write_calibrations(self, cam):
+        K, distCoeffs = self.calibrations[cam]
+        if distCoeffs[4] != 0.:
+            raise AttributeError("GTSAM doesn't support 6th order radial distorion coefficients, "
+                                 "recalibrate using a lower order model, or fix GTSAM.")
+        lines = []
+        lines.append("# Format: fx fy shear u0 v0 k1 k2 p1 p2")
+        lines.append("%.16e %.16e %.16e %.16e %.16e %.16e %.16e %.16e %.16e" % (
+                (K[0, 0], K[1, 1], K[0, 1], K[0, 2], K[1, 2]) + tuple(distCoeffs[:4]) ))
+        self.write_file("calibrations", lines, cam, omit_base_name=True)
+    
+    def write_odometry(self):
+        lines = []
+        lines.append("# Format: tx ty tz qx qy qz qw")
+        lines.append("# Newline means next odometry; Empty line means next step")
+        for step, odometry_step in enumerate(self.odometry):
+            if step: lines.append("")    # empty line between steps
+            for P in odometry_step:
+                q, l = trfm.pose_TUM_from_P(P)
+                lines.append("%.16e %.16e %.16e %.16e %.16e %.16e %.16e" % (tuple(l) + tuple(q)))
+        self.write_file("measurements.odometry", lines)
+    
+    def write_odometryAssocs(self):
+        lines = []
+        lines.append("# Format: from_cam from_frame to_cam to_frame")
+        lines.append("# Newline means next odometry; Empty line means next step")
+        for step, odometryAssocs_step in enumerate(self.odometryAssocs):
+            if step: lines.append("")    # empty line between steps
+            lines += [' '.join(map(str, assoc)) for assoc in odometryAssocs_step]
+        self.write_file("measurements.odometryAssocs", lines)
+    
+    def write_points2D(self, cam):
+        lines = []
+        lines.append("# Format: x y")
+        lines.append("# Newline means next feature; Empty line means next frame, first feature")
+        for step, points2D_step in enumerate(self.points2D[cam]):
+            if step: lines.append("")    # empty line between steps
+            for imgp in points2D_step:
+                lines.append("%.16e %.16e" % tuple(imgp))
+        self.write_file("measurements.points2D", lines, cam)
+    
+    def write_point2D3DAssocs(self, cam):
+        lines = []
+        lines.append("# Format: frameIdx point2DIdx point3DIdx")
+        lines.append("# Newline means next feature; Empty line means next step, first feature")
+        for step, point2D3DAssocs_step in enumerate(self.point2D3DAssocs[cam]):
+            if step: lines.append("")    # empty line between steps
+            lines += [' '.join(map(str, assoc)) for assoc in point2D3DAssocs_step]
+        self.write_file("measurements.point2D3DAssocs", lines, cam)
+    
+    def write_point3DAddedIdxs(self):
+        lines = []
+        lines.append("# Format: point3DIdx")
+        lines.append("# Newline means next point; Empty line means next step")
+        for step, point3DAddedIdxs_step in enumerate(self.point3DAddedIdxs):
+            if step: lines.append("")    # empty line between steps
+            lines += tuple(map(str, point3DAddedIdxs_step))
+        self.write_file("measurements.point3DAddedIdxs", lines)
+    
+    def write_all(self):
+        print "Writing all BA_info files..."
+        for cam in range(self.num_cams):
+            self.write_calibrations(cam)
+            self.write_points2D(cam)
+            self.write_point2D3DAssocs(cam)
+        self.write_odometry()
+        self.write_odometryAssocs()
+        self.write_point3DAddedIdxs()
         print "Done."
 
 
@@ -705,7 +888,7 @@ def parse_cmd_args():
                     ("..", "..", "datasets", "SVO", "sin2_tex2_h1_v8_d", "init_pose.txt") ),
             fps=50,
             traj_out_file=
-            ("..", "..", "datasets", "SVO", "sin2_tex2_h1_v8_d", "traj_out-slam2.txt"),
+            ("..", "..", "datasets", "SVO", "sin2_tex2_h1_v8_d", "traj_out.cam0-slam2.txt"),
             map_out_file=
             ("..", "..", "datasets", "SVO", "sin2_tex2_h1_v8_d", "map_out-slam2.pcd") ))
     example_usages.append(ExampleUsage(    # example of using the ICL_NUIM living-room dataset (4th trajectory)
@@ -715,7 +898,7 @@ def parse_cmd_args():
                     ("..", "..", "datasets", "ICL_NUIM", "living_room_traj3n_frei_png", "init_points.pcd"),
                     ("..", "..", "datasets", "ICL_NUIM", "living_room_traj3n_frei_png", "init_pose.txt") ),
             traj_out_file=
-            ("..", "..", "datasets", "ICL_NUIM", "living_room_traj3n_frei_png", "traj_out-slam2.txt"),
+            ("..", "..", "datasets", "ICL_NUIM", "living_room_traj3n_frei_png", "traj_out.cam0-slam2.txt"),
             map_out_file=
             ("..", "..", "datasets", "ICL_NUIM", "living_room_traj3n_frei_png", "map_out-slam2.pcd") ))
     
@@ -752,6 +935,8 @@ def parse_cmd_args():
                         help="filepath of the output camera trajectory, in TUM format")
     parser.add_argument("-m", "--map-out-file", dest="map_out_file",
                         help="filepath of the output 3D map, in PCD format (pointcloud)")
+    parser.add_argument("-b", "--BA-out-files-base-name", dest="BA_out_files_base_name",
+                        help='base-name of the generated "BA_info.*.txt" files, for use in a bundle-adjuster')
     
     parser.add_argument("-l", "--live-update-period", dest="live_update_period",
                         type=int, default=30,
@@ -762,8 +947,8 @@ def parse_cmd_args():
     
     # Parse arguments
     args = parser.parse_args()
-    img_dir, calib_file, init_chessboard_size_x, init_chessboard_size_y, init_objp_file, init_pose_file, fps, traj_out_file, map_out_file, live_update_period, use_debug = \
-            args.img_dir, args.calib_file, args.init_chessboard_size_x, args.init_chessboard_size_y, args.init_objp_file, args.init_pose_file, args.fps, args.traj_out_file, args.map_out_file, args.live_update_period, args.use_debug
+    img_dir, calib_file, init_chessboard_size_x, init_chessboard_size_y, init_objp_file, init_pose_file, fps, traj_out_file, map_out_file, BA_out_files_base_name, live_update_period, use_debug = \
+            args.img_dir, args.calib_file, args.init_chessboard_size_x, args.init_chessboard_size_y, args.init_objp_file, args.init_pose_file, args.fps, args.traj_out_file, args.map_out_file, args.BA_out_files_base_name, args.live_update_period, args.use_debug
     
     # If debug is not desired, but the application is running in debug-mode, restart app in optimized mode
     if not use_debug and __debug__:
@@ -790,7 +975,7 @@ def parse_cmd_args():
         init_chessboard_size = None
         init_files = (init_objp_file, init_pose_file)
     
-    return img_dir, calib_file, init_chessboard_size, init_files, fps, traj_out_file, map_out_file, live_update_period
+    return img_dir, calib_file, init_chessboard_size, init_files, fps, traj_out_file, map_out_file, BA_out_files_base_name, live_update_period
 
 
 def main():
@@ -801,13 +986,25 @@ def main():
     global homography_condition_threshold
     global max_solvePnP_reproj_error, max_2nd_solvePnP_reproj_error, max_fundMat_reproj_error
     global max_solvePnP_outlier_ratio, max_2nd_solvePnP_outlier_ratio, solvePnP_use_extrinsic_guess
+    global ba_info
     
     # Parse command-line arguments
-    img_dir, calib_file, init_chessboard_size, init_files, fps, traj_out_file, map_out_file, live_update_period = \
+    img_dir, calib_file, init_chessboard_size, init_files, fps, traj_out_file, map_out_file, BA_out_files_base_name, live_update_period = \
             parse_cmd_args()
+    
+    # Setup BA info container
+    if BA_out_files_base_name:
+        if not traj_out_file and not map_out_file:
+            raise AttributeError("Both a trajectory and map file should be created to perform offline BA.")
+        BA_out_files_base_dir = os.path.dirname(traj_out_file)
+        ba_info = BundleAdjustmentInfoContainer(BA_out_files_base_dir, BA_out_files_base_name, 1)
+    else:
+        ba_info = None
+    tracking_history = []
     
     # Load camera intrinsics
     cameraMatrix, distCoeffs, imageSize = calibration_tools.load_camera_intrinsics(calib_file)
+    if ba_info: ba_info.set_calibration(cameraMatrix, distCoeffs)
     neg_fy = (cameraMatrix[1, 1] < 0)
     
     # Select working (or 'testing') set
@@ -928,6 +1125,11 @@ def main():
     rvecs_keyfr.append(rvec_keyfr)
     tvecs_keyfr.append(tvec_keyfr)
     
+    # Add BA info for first frame
+    if ba_info:
+        ba_info.set_point3DAddedIdxs(all_idxs_tmp)
+        ba_info.add_points2D_3Dassoc(base_imgp, all_idxs_tmp, 0)
+    
     # Start frame : add other points
     mask_img = keypoint_mask(new_imgp)
     to_add = target_amount_keypoints - len(new_imgp)
@@ -939,6 +1141,10 @@ def main():
     base_imgp, new_imgp, imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp = idxs_rebase_and_add_imgp(
             imgp_extra, base_imgp, new_imgp, imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
     ret = 2    # indicate keyframe
+    
+    # Add tracking info for first frame
+    if ba_info:
+        tracking_history.append(TrackingEvent(0, new_imgp, all_idxs_tmp))
         
     # Draw 3D points info of current frame
     if __debug__:
@@ -957,6 +1163,8 @@ def main():
                 triangl_idxs, imgp_to_objp_idxs, objp, objp_colors, objp_groups, color_palette, color_palette_size, neg_fy )
     
     for i in range(1, len(images)):
+        if ba_info: ba_info.next_step()    # signal next frame/step to BA
+        
         # Frame[i-1] -> Frame[i]
         print "\nFrame[%s] -> Frame[%s]" % (i-1, i)
         print "    processing '", images[i], "':"
@@ -964,7 +1172,7 @@ def main():
         imgs.append(cur_img)
         imgs_gray.append(cv2.cvtColor(imgs[-1], cv2.COLOR_BGR2GRAY))
         ret, base_imgp, new_imgp, base_img, triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_colors, objp_groups, group_id, rvec, tvec, rvec_keyfr, tvec_keyfr = \
-                handle_new_frame(base_imgp, new_imgp, base_img, imgs[-2], imgs_gray[-2], imgs[-1], imgs_gray[-1], triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_colors, objp_groups, group_id, rvec_keyfr, tvec_keyfr)
+                handle_new_frame(base_imgp, new_imgp, base_img, imgs[-2], imgs_gray[-2], imgs[-1], imgs_gray[-1], triangl_idxs, nontriangl_idxs, imgp_to_objp_idxs, all_idxs_tmp, objp, objp_colors, objp_groups, group_id, rvec_keyfr, tvec_keyfr, tracking_history, i)
         
         if ret:
             rvecs.append(rvec)
@@ -1004,6 +1212,7 @@ def main():
     # Save results at the very end
     write_output(traj_out_file, fps, rvecs, tvecs,
                  map_out_file, triangl_idxs, imgp_to_objp_idxs, objp, composite3D_painter.color_mode, color_palette, color_palette_size, objp_groups, objp_colors)
+    if ba_info: ba_info.write_all()
 
 
 if __name__ == "__main__":

@@ -78,7 +78,7 @@ def iterative_LS_triangulation(u1, P1, u2, P2, tolerance=3.e-5):
     
     # Create array of triangulated points
     x = np.empty((len(u1), 3), dtype=np.float64)
-    x_status = np.zeros(len(u1), dtype=np.int32)    # default: mark every point as an outlier
+    x_status = np.empty(len(u1), dtype=np.int32)
     
     # Call the C function
     iterative_LS_triangulation_c(u1, P1, u2, P2, tolerance, x, x_status)

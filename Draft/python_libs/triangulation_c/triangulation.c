@@ -136,11 +136,6 @@ void iterative_LS_triangulation(/* ... */)
             /* Convergence criterium */
             if ( ((fabs(d1_new - d1) <= tolerance) && (fabs(d2_new - d2) <= tolerance)) || 
                     ((d1_new == 0) || (d2_new == 0)) ) {
-                x_status[xi] = ((d1_new > 0) && (d2_new > 0));    // points should be in front of both cameras
-                if (d1_new <= 0)
-                    x_status[xi] -= 1;    // behind 1st cam
-                if (d2_new <= 0)
-                    x_status[xi] -= 2;    // behind 2nd cam
                 break;
             }
             
@@ -154,5 +149,13 @@ void iterative_LS_triangulation(/* ... */)
             d1 = d1_new;
             d2 = d2_new;
         }
+        
+        /* Set status */
+        x_status[xi] = ( (i < 10) &&                          // points should have converged by now
+                         ((d1_new > 0) && (d2_new > 0)) );    // points should be in front of both cameras
+        if (d1_new <= 0)
+            x_status[xi] -= 1;    // behind 1st cam
+        if (d2_new <= 0)
+            x_status[xi] -= 2;    // behind 2nd cam
     }
 }

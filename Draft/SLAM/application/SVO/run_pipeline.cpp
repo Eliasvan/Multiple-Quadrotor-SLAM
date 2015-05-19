@@ -161,7 +161,7 @@ int BenchmarkNode::runFromFolder()
     depth_filter_ = new DepthFilter(feature_detector, depth_filter_cb);
     depth_filter_->options_.verbose = true;
     
-    // write trajectories to file, and run depth-filter
+    // write trajectory to file, and run depth-filter
     std::ofstream ofs_traj(traj_out_file_.c_str());
     frame_counter = 1 + 10;
     for (std::list<FramePtr>::iterator frame=frames.begin(); frame!=frames.end(); ++frame)
@@ -172,15 +172,20 @@ int BenchmarkNode::runFromFolder()
             for (int j = 0; j < 6; j++)
                 if (! ((1.e-16 < fabs(cov(i,j))) && (fabs(cov(i,j)) < 1.e+16)) )    // likely an invalid pose
                     skip_frame = true;
-        if (skip_frame) {
-            frame_counter++;
-            continue;
-        }
         
         // access the pose of the camera via vo_->lastFrame()->T_f_w_.
         Sophus::SE3 world_transf = (*frame)->T_f_w_.inverse();
         Eigen::Quaterniond quat = world_transf.unit_quaternion();
         Eigen::Vector3d transl = world_transf.translation();
+        if ( ((transl(0) == 0.) && (transl(1) == 0.) && (transl(2) == 0.)) && 
+                ((quat.x() == -0.) && (quat.y() == -0.) && (quat.z() == -0.) && (quat.w() == 1.)) )
+            skip_frame = true;
+        
+        if (skip_frame) {
+            frame_counter++;
+            continue;
+        }
+        
         //std::cout << "Quaternion: " << quat.x() << " " << quat.y() << " " << quat.z() << " " << quat.w() << " \n"
         //          << "Translation: " << transl(0) << " " << transl(1) << " " << transl(2) << " \n";
         ofs_traj  << (*frame)->timestamp_ << " "
@@ -248,7 +253,7 @@ int BenchmarkNode::runFromFolder()
                                    (clamp((int)round(c[2]), 0, 0xFF) << 16) + 
                                                                (0xFD << 24));
         ofs_map << p[0] << " " << p[1] << " " << p[2] << " "
-                << std::setprecision(8) << *reinterpret_cast<float *>(f) << std::endl;
+                << std::setprecision(9) << *reinterpret_cast<float *>(f) << std::endl;
     }
     
     std::cout << "Done." << std::endl;

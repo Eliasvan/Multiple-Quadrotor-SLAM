@@ -157,3 +157,4 @@ but some algorithms may need to have additional data to initialize the algorithm
 
 In "living_room.blend", there is a script "extract_init.py" that takes care of this.
 Other useful scripts include "load_gndtrth.py", "show_result.py" and "live_results.py".
+There is also a "show_result_tex.py" script that shows the results on the re-textured dataset.

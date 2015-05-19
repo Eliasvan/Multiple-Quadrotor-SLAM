@@ -55,12 +55,16 @@ def save_cam_trajectory_TUM(filename, cam_trajectory):
     
     "cam_trajectory" should consist of the following numpy arrays: "timestps", "locations", and "quaternions".
     """
+    lines = []
     
-    out = '\n'.join([
+    lines.append("# Format: timestamp tx ty tz qx qy qz qw")
+    lines.append("# Where translations and quaternions are defined in world coordinates (=> inverse of pose)")
+    lines += [
             ' '.join(map(str, (timestp,) + tuple(l) + tuple(q)))
-            for timestp, l, q in zip(*cam_trajectory) ]) + '\n'
+            for timestp, l, q in zip(*cam_trajectory) ]
+    lines.append("")    # empty line
     
-    open(filename, 'w').write(out)
+    open(filename, 'w').write('\n'.join(lines))
 
 
 def load_3D_points_from_pcd_file(filename, use_alpha=False):

@@ -1,0 +1,7 @@
+# Format: noiseType noiseSpecificValues
+# Where "noiseType" can be one of {"Unit", "Isotropic", "Diagonal", "Constrained"}
+# and "noiseSpecificValues" specify the sigma values,
+# the amount of values is dependent on "noiseType"
+# The dimension of the noise is equal to 6.
+# Matrix structure (from cam at row to cam at column) : Newline means next column; Empty line means next row, first column
+Diagonal 0.05 0.05 0.05 0.2 0.2 0.2

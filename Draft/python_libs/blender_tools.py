@@ -237,6 +237,10 @@ def create_cam_trajectory(name,
         ob = bpy.context.object
         ob.name = name
     
+    # Unhide object
+    ob_hide_backup = ob.hide
+    ob.hide = False
+    
     ob.rotation_mode = "QUATERNION"
     
     # Create path of the camera
@@ -260,6 +264,9 @@ def create_cam_trajectory(name,
         bpy.ops.object.paths_calculate(start_frame=framenrs[0], end_frame=framenrs[-1])
     else:
         bpy.ops.object.paths_calculate(start_frame=start_frame, end_frame=start_frame + len(locations))
+    
+    # Restore hide-state
+    ob.hide = ob_hide_backup
     
     if goto_last_keyframe:
         anim_state_backup[0] = bpy.context.scene.frame_current
