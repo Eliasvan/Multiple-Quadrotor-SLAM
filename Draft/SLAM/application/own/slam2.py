@@ -1024,7 +1024,6 @@ def main():
     
     # Select working (or 'testing') set
     images = dataset_tools.image_filepaths_by_directory(img_dir)
-    print images
     
     # Load pre-defined initialization points, needed for datasets without chessboard in the beginning
     if not init_chessboard_size:
