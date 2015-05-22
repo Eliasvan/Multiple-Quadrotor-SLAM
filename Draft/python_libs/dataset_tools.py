@@ -1,3 +1,4 @@
+import os
 import struct
 import numpy as np
 
@@ -15,6 +16,53 @@ def _cam_trajectory_to_numpy(timestps, locations, quaternions, normalize_quatern
         return np.array(timestps, dtype=float), np.array(locations, dtype=float), quaternions
     else:
         return np.empty((0), dtype=float), np.empty((0, 3), dtype=float), np.empty((0, 4), dtype=float)
+
+
+""" Filepath functions """
+
+
+def image_filepaths_by_directory(img_dir):
+    """
+    Returns the filepaths to the images contained in directory "img_dir".
+    
+    Note: numbers are treated as numbers, as expected,
+    e.g. "img-2.png" vs "img-10.png" are sorted correctly.
+    """
+    
+    # Only allow certain image extensions
+    images = [image for image in os.listdir(img_dir)
+              if os.path.splitext(image)[1] in (".png", ".jpg", ".jpeg", ".tiff")]
+    
+    # Find the portions of the filename containing numbers, and retrieve the maximum length
+    images_splitted = []
+    max_number_length = 0
+    for img in images:
+        img_splitted = []
+        img_splitted_idxs = []
+        state = None
+        for c in img:
+            state_new = ("NaN", "Number")[c in tuple("0123456789")]
+            if state_new != state:
+                if state_new == "Number":
+                    img_splitted_idxs.append(len(img_splitted))
+                img_splitted.append("")
+                state = state_new
+            img_splitted[-1] += c
+            if state == "Number":
+                max_number_length = max(max_number_length, len(img_splitted[-1]))
+        images_splitted.append((img_splitted, img_splitted_idxs))
+    
+    # Insert leading zeros to each number, to fill up to the maximum number length, then sort
+    keys_and_images = []
+    for image, (img_splitted, img_splitted_idxs) in zip(images, images_splitted):
+        for i in img_splitted_idxs:
+            img_splitted[i] = '0' * (max_number_length - len(img_splitted[i])) + img_splitted[i]
+        key = ''.join(img_splitted)
+        keys_and_images.append((key, image))
+    keys_and_images.sort()
+    
+    # Append the directory to the sorted list of image filenames
+    return [os.path.join(img_dir, image) for key, image in keys_and_images]
 
 
 """ File- import/export functions """

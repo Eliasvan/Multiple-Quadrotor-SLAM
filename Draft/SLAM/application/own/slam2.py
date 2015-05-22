@@ -1023,12 +1023,8 @@ def main():
     neg_fy = (cameraMatrix[1, 1] < 0)
     
     # Select working (or 'testing') set
-    images = [image for image in os.listdir(img_dir)
-              if os.path.splitext(image)[1] in (".png", ".jpg", ".jpeg", ".tiff")]
-    # Correctly sort "2.png" vs "10.png" by adding leading zeros until filename-lengths are equal
-    max_img_filename_length = max(map(len, images))
-    images.sort(key=(lambda img_file: '0' * (max_img_filename_length - len(img_file)) + img_file))
-    images = [os.path.join(img_dir, image) for image in images]
+    images = dataset_tools.image_filepaths_by_directory(img_dir)
+    print images
     
     # Load pre-defined initialization points, needed for datasets without chessboard in the beginning
     if not init_chessboard_size:
