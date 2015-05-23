@@ -6,6 +6,14 @@
 num_points3D = 0:150;
 num_frames = 0:10;
 
+% Set easy-to-read metrics, fonts, ...
+set(0, 'DefaultAxesFontName', 'DejaVuSans')
+set(0, 'DefaultTextFontname', 'DejaVuSans')
+set(0, 'DefaultFigurePaperUnits', 'inches')
+set(0, 'DefaultFigurePaperSize', [4, 4])
+set(0, 'DefaultFigurePaperPosition', [0 0 [4, 4]])
+set(0, 'DefaultLineMarkerSize', 3)
+
 
 
 % First, we simulate only measuring the 2D points of each 3D point in each frame,
@@ -39,7 +47,6 @@ xlabel('number of 3D points')
 ylabel('number of frames')
 axis([0 p(end) 0 f(end)])
 %  title('Projective factors : feasibility line')
-set(gcf,'paperunits','inches','papersize',[4, 4],'paperposition',[0 0 [4, 4]]);
 saveas(gcf, 'figures/projFactors_feasibilityLine.pdf')
 
 figure(1)
@@ -53,7 +60,7 @@ ylabel('number of frames')
 zlabel('number of unknowns or constraints')
 axis([0 p(end) 0 f(end) 0 4000])
 %  title('Projective factors : #unknowns vs #constraints')
-set(gcf,'paperunits','inches','papersize',[5, 5],'paperposition',[0 0 [5, 5]]);
+set(gcf, 'PaperSize', [5, 5], 'PaperPosition', [0 0 [5, 5]]);
 saveas(gcf, 'figures/projFactors_unknownsVSconstraints.pdf')
 
 %% Parametrized version of previous figure
@@ -93,7 +100,6 @@ xlabel('number of 3D points')
 ylabel('number of frames')
 axis([0 p(end) 0 f(end)])
 %  title('Projective and Odometry factors : feasibility line')
-set(gcf,'paperunits','inches','papersize',[4, 4],'paperposition',[0 0 [4, 4]]);
 saveas(gcf, 'figures/projANDodometryFactors_feasibilityLine.pdf')
 
 figure(3)
@@ -107,7 +113,7 @@ ylabel('number of frames')
 zlabel('number of unknowns or constraints')
 axis([0 p(end) 0 f(end) 0 4000])
 %  title('Projective and Odometry factors : #unknowns vs #constraints')
-set(gcf,'paperunits','inches','papersize',[5, 5],'paperposition',[0 0 [5, 5]]);
+set(gcf, 'PaperSize', [5, 5], 'PaperPosition', [0 0 [5, 5]]);
 saveas(gcf, 'figures/projANDodometryFactors_unknownsVSconstraints.pdf')
 
 %% Parametrized version of previous figure

@@ -1,3 +1,13 @@
+% Set easy-to-read metrics, fonts, ...
+set(0, 'DefaultAxesFontName', 'DejaVuSans')
+set(0, 'DefaultTextFontname', 'DejaVuSans')
+set(0, 'DefaultFigurePaperUnits', 'inches')
+set(0, 'DefaultFigurePaperSize', [4, 4])
+set(0, 'DefaultFigurePaperPosition', [0 0 [4, 4]])
+set(0, 'DefaultLineMarkerSize', 3)
+
+
+
 %%
 % Test 1
 %%
@@ -47,6 +57,7 @@ for j = 1 : num_triangl_methods
     ylabel('Z-coordinate of 3D point')
     zlabel('Root Median Squared 3D error')
     legend(l(j, :))
+    set(gcf, 'PaperSize', [5, 5], 'PaperPosition', [0 0 [5, 5]]);
 
     saveas(gcf, ['figures/test1_', triangl_methods{j}, '_3Dplot.pdf'])
 end
@@ -105,7 +116,8 @@ if length(j)    % iterative_LS exists
         xlabel('X-coordinate of 3D point')
         ylabel('Y-coordinate of 3D point')
         zlabel('Z-coordinate of 3D point')
-        title(['Error ellipsoids of triangulated points for end-pose of trajectory ', num2str(i)])
+%          title(['Error ellipsoids of triangulated points for end-pose of trajectory ', num2str(i)])
+        set(gcf, 'PaperSize', [5, 5], 'PaperPosition', [0 0 [5, 5]]);
 
         saveas(gcf, ['figures/test1_vectors_traj', num2str(i), '_3Dplot.pdf'])
     end
@@ -151,8 +163,11 @@ set(gca, 'zscale', 'log')
 xlabel('X-coordinate of 2nd camera center')
 ylabel('Z-coordinate of 2nd camera center')
 zlabel('Root Median Squared 3D error')
-legend(['Projection of 4th trajectory on the ground'; 'Projection of 5th trajectory on the ground'; l(:)])
-title(strjoin(t, ' \n'))
+%  legend(['Projection of 4th trajectory on the ground'; 'Projection of 5th trajectory on the ground'; l(:)])
+legend(['Projection of 4th trajectory on the ground'; 'Projection of 5th trajectory on the ground'; ...
+        l(1:num_triangl_methods)'])    % deliberately hide other trajectory legends to not clutter plot
+%  title(strjoin(t, ' \n'))
+set(gcf, 'PaperSize', [5, 5], 'PaperPosition', [0 0 [5, 5]]);
 
 saveas(gcf, 'figures/test2_err3D_3Dplot.pdf')
 
@@ -174,7 +189,8 @@ hold off
 set(gca, 'YMinorTick', 'on')
 xlabel('progress of trajectory [%]')
 ylabel('Root Median Squared 3D error')
-legend(l(:))
+%  legend(l(:))
+legend(l(1:num_triangl_methods)')    % deliberately hide other trajectory legends to not clutter plot
 
 saveas(gcf, 'figures/test2_err3D_2Dplot.pdf')
 
@@ -198,7 +214,7 @@ if length(j)    % iterative_LS exists
     xlabel('progress of trajectory [%]')
     ylabel('Ratio of amount of false positives')
     legend(l(j, :))
-    title(['Robustness (3D error distance threshold = ', num2str(robustness_thresh_max), '), "positive" means properly triangulated'])
+%      title(['Robustness (3D error distance threshold = ', num2str(robustness_thresh_max), '), "positive" means properly triangulated'])
 
     saveas(gcf, 'figures/test2_robustnessFalsePositivesRatio_plot.pdf')
 
@@ -217,7 +233,7 @@ if length(j)    % iterative_LS exists
     xlabel('progress of trajectory [%]')
     ylabel('Ratio of amount of false negatives')
     legend(l(j, :))
-    title(['Robustness (3D error distance threshold = ', num2str(robustness_thresh_min), '), "positive" means properly triangulated'])
+%      title(['Robustness (3D error distance threshold = ', num2str(robustness_thresh_min), '), "positive" means properly triangulated'])
 
     saveas(gcf, 'figures/test2_robustnessFalseNegativesRatio_plot.pdf')
     
@@ -250,7 +266,7 @@ for i = 1 : num_traj
     xlabel('camera 2D noise sigma value [px]')
     ylabel('Root Median Squared 3D error')
     legend(l2(:))
-    title(['triangulation with ', noise_type_descr{1}, ' on end-pose of trajectory ', num2str(i)])
+%      title(['triangulation with ', noise_type_descr{1}, ' on end-pose of trajectory ', num2str(i)])
 
     saveas(gcf, ['figures/test3_err3D_traj', num2str(i), '.pdf'])
 end
@@ -271,7 +287,7 @@ if length(j)    % iterative_LS exists
         xlabel('camera 2D noise sigma value [px]')
         ylabel('Root Median Squared 3D error')
         legend(noise_type_descr(:))
-        title([strrep(triangl_methods{j}, '_', ' '), ' on end-pose of trajectory ', num2str(i)])
+%          title([strrep(triangl_methods{j}, '_', ' '), ' on end-pose of trajectory ', num2str(i)])
 
         saveas(gcf, ['figures/test3_err3D_', triangl_methods{j}, '_traj', num2str(i), '.pdf'])
     end

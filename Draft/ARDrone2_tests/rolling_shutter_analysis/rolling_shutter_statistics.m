@@ -11,39 +11,45 @@ load rolling_shutter_features_out.mat    % data
 dataNormX = data(:,:,1) - mean(data(:,:,1));
 dataNormY = data(:,:,2) - mean(data(:,:,2));
 
-FontSize = 20;
+% Set easy-to-read metrics, fonts, ...
+set(0, 'DefaultAxesFontName', 'DejaVuSans')
+set(0, 'DefaultTextFontname', 'DejaVuSans')
+set(0, 'DefaultFigurePaperUnits', 'inches')
+set(0, 'DefaultFigurePaperSize', [4, 4])
+set(0, 'DefaultFigurePaperPosition', [0 0 [4, 4]])
+set(0, 'DefaultLineMarkerSize', 3)
 
 % Plot all feature points
 figure(1)
-title('All (2D) feature points')
+%  title('All (2D) feature points')
 hold on
 for i=1:size(data,2)
     plot(data(:,i,1), data(:,i,2), 'o-')
 end
-set(gca, 'FontSize', 12)
 set(gca, 'YDir', 'reverse')
 axis equal tight
 hold off
 xlabel('X coordinate in image [px]')
 ylabel('Y coordinate in image [px]')
+set(gcf, 'PaperPosition', [0 0 [4.3, 4]]);
 saveas(gcf, ['figures/all_features.pdf'])
 
 % Plot features' mean deviation over time for X and Y coordinates
 figure(2)
 plot(dataNormX, 'o-')
 ylim([-40, 40])
-title('All X-coordinates of feature points vs time')
-set(gca, 'FontSize', FontSize)
+%  title('All X-coordinates of feature points vs time')
 xlabel('framenumber in sequence')
 ylabel('X deviation from mean [px]')
+set(gcf,'paperunits','inches','papersize',[4, 4],'paperposition',[0 0 [4, 4]]);
 saveas(gcf, ['figures/all_features_X.pdf'])
 figure(3)
 plot(dataNormY, 'o-')
 ylim([-40, 40])
-title('All Y-coordinates of feature points vs time')
-set(gca, 'FontSize', FontSize)
+%  title('All Y-coordinates of feature points vs time')
 xlabel('framenumber in sequence')
 ylabel('Y deviation from mean [px]')
+set(gcf,'paperunits','inches','papersize',[4, 4],'paperposition',[0 0 [4, 4]]);
 saveas(gcf, ['figures/all_features_Y.pdf'])
 
 % Classify data into rolling shutter error and bad tracks
@@ -79,11 +85,11 @@ title('Class 0.5    Histogram Y')
 figure(7)
 plot([dataNormX(:,class1(1)), dataNormY(:,class1(1))], 'o-')
 ylim([-1, 1.5])
-title('Class 1 (only first feature shown)    X and Y vs time')
-set(gca, 'FontSize', FontSize)
+%  title('Class 1 (only first feature shown)    X and Y vs time')
 xlabel('framenumber in sequence')
 ylabel('deviation from mean [px]')
-set(legend('X coordinate', 'Y coordinate'), 'FontSize', FontSize)
+legend('X coordinate', 'Y coordinate')
+set(gcf,'paperunits','inches','papersize',[4, 4],'paperposition',[0 0 [4, 4]]);
 saveas(gcf, ['figures/class1_deviation.pdf'])
 figure(8)
 hist(dataNormX(:,class1(1)))
@@ -96,11 +102,11 @@ title('Class 1    Histogram Y')
 figure(10)
 plot([dataNormX(:,class3(1)), dataNormY(:,class3(1))], 'o-')
 ylim([-1, 1.5])
-title('Class 3 (only first feature shown)    X and Y vs time')
-set(gca, 'FontSize', FontSize)
+%  title('Class 3 (only first feature shown)    X and Y vs time')
 xlabel('framenumber in sequence')
 ylabel('deviation from mean [px]')
-set(legend('X coordinate', 'Y coordinate'), 'FontSize', FontSize)
+legend('X coordinate', 'Y coordinate')
+set(gcf,'paperunits','inches','papersize',[4, 4],'paperposition',[0 0 [4, 4]]);
 saveas(gcf, ['figures/class3_deviation.pdf'])
 figure(11)
 hist(dataNormX(:,class3(1)))
@@ -112,13 +118,13 @@ title('Class 3    Histogram Y')
 % Visualize class 3+
 figure(13)
 plot(data(:,class3p(1),1), data(:,class3p(1),2), 'o-')
-title('Class 3+ (only first feature shown)    XY vs time')
+%  title('Class 3+ (only first feature shown)    XY vs time')
 NumTicks = 3; L = get(gca, 'XLim'); set(gca, 'XTick', linspace(L(1),L(2),NumTicks))
-set(gca, 'FontSize', FontSize)
 set(gca, 'YDir', 'reverse')
 axis equal tight
 xlabel('X coordinate in image [px]')
 ylabel('Y coordinate in image [px]')
+set(gcf,'paperunits','inches','papersize',[4, 4],'paperposition',[0 0 [4, 4]]);
 saveas(gcf, ['figures/class3plus_drift.pdf'])
 figure(14)
 hist(dataNormX(:,class3p(1)))
@@ -132,10 +138,10 @@ dataNormRadius = sqrt(dataNormX.^2 + dataNormY.^2);
 sortedStdRadius = sort(std(dataNormRadius));
 figure(16)
 semilogy(linspace(0, 100, size(data,2)), sortedStdRadius)
-title('Error of a feature over time vs percentile')
-set(gca, 'FontSize', 17)
+%  title('Error of a feature over time vs percentile')
 xlabel('percentile in the sorted list of all features [%]')
 ylabel('sigma of error over time of a feature [px]')
+set(gcf,'paperunits','inches','papersize',[4, 4],'paperposition',[0 0 [4, 4]]);
 saveas(gcf, ['figures/radius_error_distribution.pdf'])
 
 L_1sigma = round(.6827 * length(sortedStdRadius));
