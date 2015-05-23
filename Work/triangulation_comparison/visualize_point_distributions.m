@@ -1,7 +1,7 @@
 % Set easy-to-read metrics, fonts, ...
 
 set(0, 'DefaultAxesFontName', 'DejaVuSans')
-set(0, 'DefaultTextFontname', 'DejaVuSans')
+set(0, 'DefaultTextFontName', 'DejaVuSans')
 set(0, 'DefaultFigurePaperUnits', 'inches')
 set(0, 'DefaultFigurePaperSize', [4, 4])
 set(0, 'DefaultFigurePaperPosition', [0 0 [4, 4]])

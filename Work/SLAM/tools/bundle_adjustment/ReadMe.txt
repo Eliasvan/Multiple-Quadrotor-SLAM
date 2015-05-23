@@ -2,7 +2,7 @@ Installation
 ============
 
 First, make sure to have installed GTSAM,
-this is explained in "/Draft/GTSAM-ReadMe.txt".
+this is explained in "/Work/GTSAM-ReadMe.txt".
 
 Then, run the following to compile the bundle-adjuster:
 $ g++ bundle_adjust.cpp -lgtsam -lboost_system -lboost_filesystem -ltbb -ltbbmalloc -o bundle_adjust
@@ -49,12 +49,12 @@ Usage with SLAM algorithm
 -------------------------
 
 Go into the directory with the trajectories, map, and "BA_info.*.txt" files,
-e.g. "/Draft/SLAM/datasets/ICL_NUIM/living_room_traj3n_frei_png", then run:
+e.g. "/Work/SLAM/datasets/ICL_NUIM/living_room_traj3n_frei_png", then run:
 $ ../../../tools/bundle_adjustment/bundle_adjust  "." "slam2" 1  30  0
 
 This will generate the "traj_out.cam0-slam2-BA.txt" and "map_out-slam2-BA.txt" files,
 which can be opened with the Blender file "living_room.blend" in the parent directory.
-See "/Draft/SLAM/datasets/ICL_NUIM/ReadMe.txt" for more info about the visualization.
+See "/Work/SLAM/datasets/ICL_NUIM/ReadMe.txt" for more info about the visualization.
 
 Note: for the moment, the incremental approaches fail (underdetermined system exception)
 on the input data of the slam2 algorithm.

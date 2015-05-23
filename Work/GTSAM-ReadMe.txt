@@ -35,7 +35,7 @@ $ ./OdometryExample
 Example of usage in Python    (using an extension module)
 --------------------------
 
-In "/Draft/python_libs/gtsam/" the python gtsam binding will be available.
+In "/Work/python_libs/gtsam/" the python gtsam binding will be available.
 (TODO)
 
 

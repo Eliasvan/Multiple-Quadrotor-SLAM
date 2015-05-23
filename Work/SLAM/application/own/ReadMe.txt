@@ -27,13 +27,13 @@ Running on the ICL_NUIM "livingroom" dataset, 4th trajectory
 Execute the example usage command corresponding with the ICL_NUIM "livingroom" dataset.
 
 To run simultaneously with Blender,
-use the "living_room.blend" file in "/Draft/SLAM/datasets/ICL_NUIM/" and
+use the "living_room.blend" file in "/Work/SLAM/datasets/ICL_NUIM/" and
 execute the "live_results.py" script.
 Each 30 frames the current camera trajectory and map will be saved and Blender will receive these updates.
 Press ESCAPE in Blender to stop 'live-mode'.
 
 Numerical evaluation of the results can be done,
-first open a terminal in "/Draft/SLAM/datasets/ICL_NUIM/living_room_traj3n_frei_png", then run:
+first open a terminal in "/Work/SLAM/datasets/ICL_NUIM/living_room_traj3n_frei_png", then run:
 $ ../../../tools/tum_benchmark_tools/evaluate_ate.py ./traj_groundtruth3.txt ./traj_out.cam0-slam2.txt --verbose --plot ./results_ate-slam2.pdf --plot_original > ./results_ate-slam2.txt
 $ ../../../tools/tum_benchmark_tools/evaluate_rpe.py ./traj_groundtruth3.txt ./traj_out.cam0-slam2.txt --verbose --fixed_delta --plot ./results_rpe-slam2.pdf > ./results_rpe-slam2.txt
 
@@ -44,7 +44,7 @@ Running on the SVO dataset
 Execute the example usage command corresponding with the SVO dataset.
 
 Numerical evaluation of the results can be done,
-first open a terminal in "/Draft/SLAM/datasets/SVO/sin2_tex2_h1_v8_d/", then run:
+first open a terminal in "/Work/SLAM/datasets/SVO/sin2_tex2_h1_v8_d/", then run:
 $ ../../../tools/tum_benchmark_tools/evaluate_ate.py ./traj_groundtruth.txt ./traj_out.cam0-slam2.txt --verbose --plot ./results_ate-slam2.pdf --plot_original > ./results_ate-slam2.txt
 $ ../../../tools/tum_benchmark_tools/evaluate_rpe.py ./traj_groundtruth.txt ./traj_out.cam0-slam2.txt --verbose --fixed_delta --plot ./results_rpe-slam2.pdf > ./results_rpe-slam2.txt
 
@@ -60,4 +60,4 @@ this will generate additional "BA_info.*.txt" files in the same directory
 of where the trajectory file is saved.
 
 You'll also need to create files describing the noise-models for the cameras and points,
-see "/Draft/SLAM/tools/bundle_adjustment/ReadMe.txt" for further instructions,
+see "/Work/SLAM/tools/bundle_adjustment/ReadMe.txt" for further instructions,

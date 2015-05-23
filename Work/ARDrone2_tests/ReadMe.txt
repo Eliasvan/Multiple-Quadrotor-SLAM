@@ -89,7 +89,7 @@ to control/test the drone (but first connect to the drone's wireless accesspoint
 
 
 
-Additions of my "ardrone_tutorials" version to the standard package (see "/Draft/ARDrone2Tests/ros_tools")
+Additions of my "ardrone_tutorials" version to the standard package (see "/Work/ARDrone2_tests/ros_tools")
 ____________________________________________________________________
 
 Contents:

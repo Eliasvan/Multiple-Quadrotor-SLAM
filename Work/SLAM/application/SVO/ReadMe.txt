@@ -80,7 +80,7 @@ $ cd ../../..
 Running on the "sin2_tex2_h1_v8_d" dataset
 ------------------------------------------
 
-Open a terminal in directory "/Draft/SLAM/datasets/SVO/sin2_tex2_h1_v8_d/", then run:
+Open a terminal in directory "/Work/SLAM/datasets/SVO/sin2_tex2_h1_v8_d/", then run:
 $ $SVO_INSTALL_PATH/../rpg_svo/svo/bin/run_pipeline  ./img/ ./traj_out-SVO.txt ./map_out-SVO.pcd  50  752 480  315.5 315.5 376.0 240.0
 
 The results can be visualized using the "visualize.blend" file, and running the embedded Python script.
@@ -108,7 +108,7 @@ Warning: I had to:
     - change the "quality_min_fts" parameter from 50 to 25 in "rpg_svo/svo/src/config.cpp"
 And even then the trajectory was not continuously tracked, and the map is almost non-existent.
 
-Open a terminal in directory "/Draft/SLAM/datasets/ICL_NUIM/living_room_traj3n_frei_png/", then run:
+Open a terminal in directory "/Work/SLAM/datasets/ICL_NUIM/living_room_traj3n_frei_png/", then run:
 $ $SVO_INSTALL_PATH/../rpg_svo/svo/bin/run_pipeline  ./rgb/ ./traj_out-SVO.txt ./map_out-SVO.pcd  30  640 480  481.20 -480.00 319.50 239.50
 
 Similar procedure to obtain numerical results can be followed:
