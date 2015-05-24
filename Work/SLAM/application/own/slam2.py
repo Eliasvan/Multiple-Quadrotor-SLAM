@@ -38,8 +38,17 @@ def keypoint_mask(points):
     return mask_img
 
 
-def keyframe_test(points1, points2):
+def keyframe_test(points1, points2,
+                  cameraMatrix, distCoeffs):
     """Returns True if the two images can be taken as keyframes."""
+    
+    # Take random sample of input points, and undistort them
+    idxs = np.random.permutation(len(points1))[:max_num_homography_points]
+    #idxs = np.arange(len(points1))
+    points1 = cv2.undistortPoints(points1[idxs].reshape(1, len(idxs), 2), cameraMatrix, distCoeffs)[0]
+    points2 = cv2.undistortPoints(points2[idxs].reshape(1, len(idxs), 2), cameraMatrix, distCoeffs)[0]
+    
+    # Use undistorted points to search an homography, and return whether degenerate or not
     homography, mask = cv2.findHomography(points1, points2)
     w, u, vt = cv2.SVDecomp(homography, flags=cv2.SVD_NO_UV)
     w = w.reshape((-1))
@@ -519,7 +528,8 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             #print "Warning (hypothesis): num_unknowns (%s) > num_constraints (%s)" % (num_unknowns, num_constraints)
     
     # Check whether we got a new keyframe
-    is_keyframe = not underdetermined_system and keyframe_test(base_imgp[all_idxs_tmp], new_imgp)
+    is_keyframe = (not underdetermined_system and 
+                   keyframe_test(base_imgp[all_idxs_tmp], new_imgp, cameraMatrix, distCoeffs))
     print "is_keyframe:", is_keyframe
     if is_keyframe:
         # If some points are not yet triangulated, do it now:
@@ -651,7 +661,7 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
             print "added:", len(imgp_extra)
             group_id += 1    # create a new group to assign the new batch of points to, later on
         else:
-            imgp_extra = zeros((0, 2))
+            imgp_extra = np.zeros((0, 2), dtype=np.float32)
             print "adding zero new points"
         base_imgp, new_imgp, imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp = idxs_rebase_and_add_imgp(    # update indices to include new image-points
                 imgp_extra, base_imgp, new_imgp, imgp_to_objp_idxs, triangl_idxs, nontriangl_idxs, all_idxs_tmp )
@@ -998,7 +1008,7 @@ def main():
     global max_OF_error, max_lost_tracks_ratio
     global keypoint_coverage_radius#, min_keypoint_coverage
     global target_amount_keypoints, corner_quality_level, corner_min_dist
-    global homography_condition_threshold
+    global homography_condition_threshold, max_num_homography_points
     global max_solvePnP_reproj_error, max_2nd_solvePnP_reproj_error, max_fundMat_reproj_error
     global max_solvePnP_outlier_ratio, max_2nd_solvePnP_outlier_ratio, solvePnP_use_extrinsic_guess
     global ba_info
@@ -1052,18 +1062,21 @@ def main():
     keypoint_coverage_radius = int(max_OF_error)
     #min_keypoint_coverage = 0.2
     # goodFeaturesToTrack
+    max_amount_keypoints = 300
     target_amount_keypoints = int(round((imageSize[0] * imageSize[1]) / (pi * keypoint_coverage_radius**2)))    # target is entire image full
+    target_amount_keypoints = min(max_amount_keypoints, target_amount_keypoints)
     print "target_amount_keypoints:", target_amount_keypoints
     corner_quality_level = 0.01
     corner_min_dist = keypoint_coverage_radius
     # keyframe_test
-    homography_condition_threshold = 500    # defined as ratio between max and min singular values
+    homography_condition_threshold = 1.04    # defined as ratio between max and min singular values
+    max_num_homography_points = target_amount_keypoints / 4    # for performance reasons
     # reprojection error
     max_solvePnP_reproj_error = 2.#0.5    # TODO: revert to a lower number
     max_2nd_solvePnP_reproj_error = max_solvePnP_reproj_error / 2    # be more strict in a 2nd iteration, used after 1st pass of triangulation
     max_fundMat_reproj_error = 2.0
     # solvePnP
-    max_solvePnP_outlier_ratio = 0.33
+    max_solvePnP_outlier_ratio = 0.4
     max_2nd_solvePnP_outlier_ratio = 1.    # used in 2nd iteration, after 1st pass of triangulation
     solvePnP_use_extrinsic_guess = False    # TODO: set to True and see whether the 3D results are better
     
