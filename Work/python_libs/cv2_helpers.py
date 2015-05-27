@@ -31,6 +31,10 @@ def Rodrigues(rvec_or_R):
     return cv2.Rodrigues(rvec_or_R)[0]    # only output R or rvec, not the jacobian
 def invert(matrix):
     return cv2.invert(matrix)[1]    # only output the result, not the status; use with care
+def goodFeaturesToTrack(img, to_add, corner_quality_level, corner_min_dist, *args, **kwargs):
+    if to_add == 0:    # work around undocumented behavior of OpenCV, don't add new corners when to_add == 0
+        return np.zeros((0, 2), dtype=np.float32)
+    return cv2.goodFeaturesToTrack(img, to_add, corner_quality_level, corner_min_dist, *args, **kwargs).reshape((-1, 2))
 
 def format3DVector(v):
     return "[ %.3f  %.3f  %.3f ]" % tuple(v)

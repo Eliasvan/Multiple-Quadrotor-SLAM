@@ -3,4 +3,4 @@
 # and "noiseSpecificValues" specify the sigma values,
 # the amount of values is dependent on "noiseType"
 # The dimension of the noise is equal to 2.
-Isotropic 1.0
+Isotropic 5.0

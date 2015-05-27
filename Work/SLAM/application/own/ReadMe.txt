@@ -48,6 +48,10 @@ first open a terminal in "/Work/SLAM/datasets/SVO/sin2_tex2_h1_v8_d/", then run:
 $ ../../../tools/tum_benchmark_tools/evaluate_ate.py ./traj_groundtruth.txt ./traj_out.cam0-slam2.txt --verbose --plot ./results_ate-slam2.pdf --plot_original > ./results_ate-slam2.txt
 $ ../../../tools/tum_benchmark_tools/evaluate_rpe.py ./traj_groundtruth.txt ./traj_out.cam0-slam2.txt --verbose --fixed_delta --plot ./results_rpe-slam2.pdf > ./results_rpe-slam2.txt
 
+In case of bundle adjustment (see below):
+$ ../../../tools/tum_benchmark_tools/evaluate_ate.py ./traj_groundtruth.txt ./traj_out.cam0-slam2-BA.txt --verbose --plot ./results_ate-slam2-BA.pdf --plot_original > ./results_ate-slam2-BA.txt
+$ ../../../tools/tum_benchmark_tools/evaluate_rpe.py ./traj_groundtruth.txt ./traj_out.cam0-slam2-BA.txt --verbose --fixed_delta --plot ./results_rpe-slam2-BA.pdf > ./results_rpe-slam2-BA.txt
+
 
 Bundle Adjustment (offline)
 ---------------------------

@@ -8,7 +8,7 @@ import cv2
 
 import sys; sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "..", "python_libs"))
 from cv2_helpers import rgb, line, circle, putText, drawKeypointsAndMotion, drawAxisSystem, drawCamera, \
-                        Rodrigues, extractChessboardFeatures
+                        Rodrigues, goodFeaturesToTrack, extractChessboardFeatures
 import transforms as trfm
 import calibration_tools
 from calibration_tools import reprojection_error
@@ -290,8 +290,11 @@ def idxs_get_new_imgp_by_idxs(selection_idxs,
     """Get selection of new_imgp corresponding with selection_idxs (of which elements correspond with idxs in base_imgp).
     type(selection_idxs) must be of type "set".
     """
-    new_imgp_sel = np.array([p for p, idx in zip(new_imgp, all_idxs_tmp) if idx in selection_idxs])
-    return new_imgp_sel
+    if selection_idxs:
+        new_imgp_sel = np.array([p for p, idx in zip(new_imgp, all_idxs_tmp) if idx in selection_idxs])
+        if len(new_imgp_sel):
+            return new_imgp_sel
+    return np.zeros((0, 2), dtype=np.float32)
 
 def idxs_update_by_idxs(preserve_idxs,
                         triangl_idxs, nontriangl_idxs, all_idxs_tmp):
@@ -386,7 +389,7 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
         #print "lengths equal?:", len(prev_keyp), len(prev_imgp)
         #print "check keypoints:", np.array([prev_keyp[i].pt for i in range(len(prev_keyp))])
         #print "check array:", np.array([prev_imgp[i] for i in range(len(prev_imgp))])
-        #new_imgp = cv2.goodFeaturesToTrack(new_img_gray, len(prev_imgp), corner_quality_level, corner_min_dist).reshape((-1, 2))
+        #new_imgp = goodFeaturesToTrack(new_img_gray, len(prev_imgp), corner_quality_level, corner_min_dist)
         #new_keyp, new_descr = brisk.compute(new_img_gray, [cv2.KeyPoint(p[0], p[1], keypoint_coverage_radius) for p in new_imgp])
         ##FLANN_INDEX_KDTREE = 1    # BUG: this enum is missing in the Python OpenCV binding
         ##index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
@@ -650,14 +653,14 @@ def handle_new_frame(base_imgp,    # includes 2D points of both triangulated as 
         
         # Check whether we should add new image-points
         mask_img = keypoint_mask(new_imgp)    # generate mask that covers all image-points (with a certain radius)
-        to_add = target_amount_keypoints - len(new_imgp)    # limit the amount of to-be-added image-points
+        to_add = max(0, target_amount_keypoints - len(new_imgp))    # limit the amount of to-be-added image-points
         if __debug__:
             print "coverage:", 1 - cv2.countNonZero(mask_img)/float(mask_img.size)    # TODO: remove: unused
         
         # Add new image-points
         if to_add > 0:
             print "to_add:", to_add
-            imgp_extra = cv2.goodFeaturesToTrack(new_img_gray, to_add, corner_quality_level, corner_min_dist, None, mask_img).reshape((-1, 2))
+            imgp_extra = goodFeaturesToTrack(new_img_gray, to_add, corner_quality_level, corner_min_dist, None, mask_img)
             print "added:", len(imgp_extra)
             group_id += 1    # create a new group to assign the new batch of points to, later on
         else:
@@ -926,6 +929,16 @@ def parse_cmd_args():
             ("..", "..", "datasets", "ICL_NUIM", "living_room_traj3n_frei_png", "traj_out.cam0-slam2.txt"),
             map_out_file=
             ("..", "..", "datasets", "ICL_NUIM", "living_room_traj3n_frei_png", "map_out-slam2.pcd") ))
+    example_usages.append(ExampleUsage(    # example of using the retextured ICL_NUIM living-room dataset (4th trajectory)
+            ("..", "..", "datasets", "ICL_NUIM", "living_room_retextured_traj3_frei_png", "rgb"),
+            ("..", "..", "datasets", "ICL_NUIM", "camera_intrinsics.txt"),
+            init_files=(
+                    ("..", "..", "datasets", "ICL_NUIM", "living_room_retextured_traj3_frei_png", "init_points.pcd"),
+                    ("..", "..", "datasets", "ICL_NUIM", "living_room_retextured_traj3_frei_png", "init_pose.txt") ),
+            traj_out_file=
+            ("..", "..", "datasets", "ICL_NUIM", "living_room_retextured_traj3_frei_png", "traj_out.cam0-slam2.txt"),
+            map_out_file=
+            ("..", "..", "datasets", "ICL_NUIM", "living_room_retextured_traj3_frei_png", "map_out-slam2.pcd") ))
     
     # Create parser object and help messages
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1010,7 +1023,7 @@ def main():
     global target_amount_keypoints, corner_quality_level, corner_min_dist
     global homography_condition_threshold, max_num_homography_points
     global max_solvePnP_reproj_error, max_2nd_solvePnP_reproj_error, max_fundMat_reproj_error
-    global max_solvePnP_outlier_ratio, max_2nd_solvePnP_outlier_ratio, solvePnP_use_extrinsic_guess
+    global max_solvePnP_outlier_ratio, max_2nd_solvePnP_outlier_ratio
     global ba_info
     
     # Parse command-line arguments
@@ -1071,14 +1084,14 @@ def main():
     # keyframe_test
     homography_condition_threshold = 1.04    # defined as ratio between max and min singular values
     max_num_homography_points = target_amount_keypoints / 4    # for performance reasons
+    max_num_homography_points = max(4, max_num_homography_points)    # 4 is minimum number required for homography
     # reprojection error
     max_solvePnP_reproj_error = 2.#0.5    # TODO: revert to a lower number
     max_2nd_solvePnP_reproj_error = max_solvePnP_reproj_error / 2    # be more strict in a 2nd iteration, used after 1st pass of triangulation
     max_fundMat_reproj_error = 2.0
     # solvePnP
-    max_solvePnP_outlier_ratio = 0.4
+    max_solvePnP_outlier_ratio = 0.33
     max_2nd_solvePnP_outlier_ratio = 1.    # used in 2nd iteration, after 1st pass of triangulation
-    solvePnP_use_extrinsic_guess = False    # TODO: set to True and see whether the 3D results are better
     
     
     # Init
@@ -1155,8 +1168,8 @@ def main():
     
     # Start frame : add other points
     mask_img = keypoint_mask(new_imgp)
-    to_add = target_amount_keypoints - len(new_imgp)
-    imgp_extra = cv2.goodFeaturesToTrack(imgs_gray[0], to_add, corner_quality_level, corner_min_dist, None, mask_img).reshape((-1, 2))
+    to_add = max(0, target_amount_keypoints - len(new_imgp))
+    imgp_extra = goodFeaturesToTrack(imgs_gray[0], to_add, corner_quality_level, corner_min_dist, None, mask_img)
     if __debug__:
         cv2.imshow("img", cv2.drawKeypoints(imgs[0], [cv2.KeyPoint(p[0],p[1], 7.) for p in imgp_extra], color=rgb(0,0,255)))
         cv2.waitKey()

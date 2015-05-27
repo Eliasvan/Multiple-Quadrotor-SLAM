@@ -4,4 +4,4 @@
 # the amount of values is dependent on "noiseType"
 # The dimension of the noise is equal to 6.
 # Matrix structure (from cam at row to cam at column) : Newline means next column; Empty line means next row, first column
-Diagonal 0.02 0.02 0.02 0.1 0.1 0.1
+Diagonal 0.002 0.002 0.002 0.001 0.001 0.001
