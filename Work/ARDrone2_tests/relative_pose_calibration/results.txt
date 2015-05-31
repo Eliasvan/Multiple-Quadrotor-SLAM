@@ -8,7 +8,9 @@ Ps:
  [-0.08146299  0.99226691 -0.08767073 -1.96492315]
  [ 0.          0.          0.          1.        ]]
 
-=> See Blender ("triangulation_sandbox.blend") for graphical results, units are specified in "distance between 2 chessboard corners on same axis".
+=> See Blender ("/Work/calibration/application/calibrate_pose_visualization.blend") for graphical results,
+units are specified in "distance between 2 chessboard corners on same axis".
 => Assume front cam is at origin facing via direction +Z (3D), cam-axis +x (2D) corresponding with world-axis +X (3D),
     then bottom cam is located at coords:
-    [1.335899, 1.270767, -9.202469], approx facing +Y (3D)
+    [1.335899, 1.270767, -9.202469] units, or [36.9, 35.1, -254.0] mm,
+    approx facing +Y (3D)
