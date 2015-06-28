@@ -1,7 +1,10 @@
 from math import sqrt, sin, cos, acos, pi
 import numpy as np
 import numpy.linalg as LA
-import cv2
+try:
+    import cv2
+except ImportError:
+    print ("Warning: can't load module \"cv2\", required for some functions of \"transforms\" module.")
 
 
 

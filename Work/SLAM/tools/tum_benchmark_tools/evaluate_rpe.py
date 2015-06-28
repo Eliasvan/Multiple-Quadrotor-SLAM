@@ -36,6 +36,8 @@ This script computes the relative pose error from the ground truth trajectory
 and the estimated trajectory.
 """
 
+from __future__ import print_function    # Python 3 compatibility
+
 import argparse
 import random
 import numpy
@@ -176,8 +178,7 @@ def distances_along_trajectory(traj):
     """
     Compute the translational distances along a trajectory. 
     """
-    keys = traj.keys()
-    keys.sort()
+    keys = sorted(traj.keys())
     motion = [ominus(traj[keys[i+1]],traj[keys[i]]) for i in range(len(keys)-1)]
     distances = [0]
     sum = 0
@@ -190,8 +191,7 @@ def rotations_along_trajectory(traj,scale):
     """
     Compute the angular rotations along a trajectory. 
     """
-    keys = traj.keys()
-    keys.sort()
+    keys = sorted(traj.keys())
     motion = [ominus(traj[keys[i+1]],traj[keys[i]]) for i in range(len(keys)-1)]
     distances = [0]
     sum = 0
@@ -348,23 +348,23 @@ if __name__ == '__main__':
         f.close()
     
     if args.verbose:
-        print "compared_pose_pairs %d pairs"%(len(trans_error))
+        print ("compared_pose_pairs %d pairs"%(len(trans_error)))
 
-        print "translational_error.rmse %f m"%numpy.sqrt(numpy.dot(trans_error,trans_error) / len(trans_error))
-        print "translational_error.mean %f m"%numpy.mean(trans_error)
-        print "translational_error.median %f m"%numpy.median(trans_error)
-        print "translational_error.std %f m"%numpy.std(trans_error)
-        print "translational_error.min %f m"%numpy.min(trans_error)
-        print "translational_error.max %f m"%numpy.max(trans_error)
+        print ("translational_error.rmse %f m"%numpy.sqrt(numpy.dot(trans_error,trans_error) / len(trans_error)))
+        print ("translational_error.mean %f m"%numpy.mean(trans_error))
+        print ("translational_error.median %f m"%numpy.median(trans_error))
+        print ("translational_error.std %f m"%numpy.std(trans_error))
+        print ("translational_error.min %f m"%numpy.min(trans_error))
+        print ("translational_error.max %f m"%numpy.max(trans_error))
 
-        print "rotational_error.rmse %f deg"%(numpy.sqrt(numpy.dot(rot_error,rot_error) / len(rot_error)) * 180.0 / numpy.pi)
-        print "rotational_error.mean %f deg"%(numpy.mean(rot_error) * 180.0 / numpy.pi)
-        print "rotational_error.median %f deg"%numpy.median(rot_error)
-        print "rotational_error.std %f deg"%(numpy.std(rot_error) * 180.0 / numpy.pi)
-        print "rotational_error.min %f deg"%(numpy.min(rot_error) * 180.0 / numpy.pi)
-        print "rotational_error.max %f deg"%(numpy.max(rot_error) * 180.0 / numpy.pi)
+        print ("rotational_error.rmse %f deg"%(numpy.sqrt(numpy.dot(rot_error,rot_error) / len(rot_error)) * 180.0 / numpy.pi))
+        print ("rotational_error.mean %f deg"%(numpy.mean(rot_error) * 180.0 / numpy.pi))
+        print ("rotational_error.median %f deg"%numpy.median(rot_error))
+        print ("rotational_error.std %f deg"%(numpy.std(rot_error) * 180.0 / numpy.pi))
+        print ("rotational_error.min %f deg"%(numpy.min(rot_error) * 180.0 / numpy.pi))
+        print ("rotational_error.max %f deg"%(numpy.max(rot_error) * 180.0 / numpy.pi))
     else:
-        print numpy.mean(trans_error)
+        print (numpy.mean(trans_error))
 
     if args.plot:    
         import matplotlib

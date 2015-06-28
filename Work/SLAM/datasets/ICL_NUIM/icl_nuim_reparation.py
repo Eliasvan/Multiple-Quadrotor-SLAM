@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from __future__ import print_function    # Python 3 compatibility
+
 import os
 import numpy as np
 
@@ -134,13 +136,13 @@ def main():
     For now only the "Living Room Dataset" is supported.
     """
     
-    print "Mirroring 3D model..."
+    print ("Mirroring 3D model...")
     
     mirror_wavefront_obj_file(
             join_path("living_room_obj_mtl", "living-room.obj"),
             join_path("living_room_obj_mtl", "living-room_Xmirrored.obj") )
     
-    print "Extracting exact ground-truth camera trajectories..."
+    print ("Extracting exact ground-truth camera trajectories...")
     
     pov_bash_script_filenames = [
             "livingroomlcmlog-2013-08-07.00.posesRenderingCommands.sh",
@@ -155,7 +157,7 @@ def main():
                         join_path("living_room_code", pov_bash_script_filename) )) )
     
     if "--repair-noisy-trajectories" in sys.argv:
-        print "Repairing (noisy) camera trajectories..."
+        print ("Repairing (noisy) camera trajectories...")
         
         for i, pov_bash_script_filename in enumerate(pov_bash_script_filenames):
             _, locs_exact, _ = dataset_tools.convert_cam_poses_to_cam_trajectory_TUM(
@@ -165,7 +167,7 @@ def main():
                     join_path("living_room_traj%sn_frei_png" % i, "livingRoom%sn.gt.freiburg_repaired" % i),
                     np.array([-locs_exact[0, 0], locs_exact[0, 1], locs_exact[0, 2]]) )
     
-    print "Done."
+    print ("Done.")
 
 if __name__ == "__main__":
     main()

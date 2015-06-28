@@ -269,11 +269,7 @@ def save_3D_points_to_pcd_file(filename, points, colors=None):
 
 """ Transformation functions """
 
-try:
-    import cv2
-    import transforms as trfm
-except ImportError:
-    print ("Warning: can't load modules \"cv2\" or \"transforms\" required for some functions of \"dataset_tools\" module.")
+import transforms as trfm
 
 
 def convert_cam_poses_to_cam_trajectory_TUM(Ps, fps=30):

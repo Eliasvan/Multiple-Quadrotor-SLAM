@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from __future__ import print_function    # Python 3 compatibility
+
 import os
 import numpy as np
 
@@ -58,24 +60,24 @@ def parse_cmd_args():
 def main():
     traj_to_file, traj_from_file, traj_input_files, map_input_files, at_frame, offset_time = parse_cmd_args()
     
-    print "Calculating transformation..."
+    print ("Calculating transformation...")
     cam_trajectory_from = dataset_tools.load_cam_trajectory_TUM(traj_from_file)
     cam_trajectory_to = dataset_tools.load_cam_trajectory_TUM(traj_to_file)
     transformation = dataset_tools.transform_between_cam_trajectories(
             cam_trajectory_from, cam_trajectory_to, at_frame=at_frame, offset_time=offset_time )
     
-    print "Results:"
+    print ("Results:")
     delta_quaternion, delta_scale, delta_location = transformation
-    print "delta_quaternion:"
-    print "\t %s" % delta_quaternion
-    print "delta_scale:"
-    print "\t %s" % delta_scale
-    print "delta_location:"
-    print "\t %s" % delta_location
-    print
+    print ("delta_quaternion:")
+    print ("\t %s" % delta_quaternion)
+    print ("delta_scale:")
+    print ("\t %s" % delta_scale)
+    print ("delta_location:")
+    print ("\t %s" % delta_location)
+    print ()
     
     for traj_input_file in traj_input_files:
-        print 'Transforming traj "%s"...' % traj_input_file
+        print ('Transforming traj "%s"...' % traj_input_file)
         dataset_tools.save_cam_trajectory_TUM(
                 "%s-trfm%s" % tuple(os.path.splitext(traj_input_file)),
                 dataset_tools.transformed_cam_trajectory(
@@ -83,14 +85,14 @@ def main():
                         transformation ) )
     
     for map_input_file in map_input_files:
-        print 'Transforming map "%s"...' % map_input_file
+        print ('Transforming map "%s"...' % map_input_file)
         points, colors, _ = dataset_tools.load_3D_points_from_pcd_file(map_input_file, use_alpha=True)
         dataset_tools.save_3D_points_to_pcd_file(
                 "%s-trfm%s" % tuple(os.path.splitext(map_input_file)),
                 dataset_tools.transformed_points(points, transformation),
                 colors )
     
-    print "Done."
+    print ("Done.")
 
 if __name__ == "__main__":
     main()

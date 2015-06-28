@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from __future__ import print_function    # Python 3 compatibility
+
 import os
 import numpy as np
 import cv2
@@ -24,7 +26,7 @@ def main():
     num_iterations = 53
     #corner_quality_level = 0.4805294789864505
 
-    print "Searching for features ( max", num_features, ")..."
+    print ("Searching for features ( max", num_features, ")...")
     
     # Load first image
     img = cv2.cvtColor(
@@ -45,7 +47,7 @@ def main():
     corner_quality_level = lower if lower else corner_quality_level
     imgp = cv2.goodFeaturesToTrack(img, num_features, corner_quality_level, corner_min_dist).reshape((-1, 2))
     
-    print len(imgp), "features found, corner_quality_level:", corner_quality_level
+    print (len(imgp), "features found, corner_quality_level:", corner_quality_level)
     
     # Load camera intrinsics
     cameraMatrix, distCoeffs, imageSize = calibration_tools.load_camera_intrinsics(
@@ -87,7 +89,7 @@ def main():
             join_path("sin2_tex2_h1_v8_d", "init_points.pcd"),
             objp )
     
-    print "Done."
+    print ("Done.")
 
 if __name__ == "__main__":
     main()

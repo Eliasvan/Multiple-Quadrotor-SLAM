@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from __future__ import print_function    # Python 3 compatibility
+
 import os
 import numpy as np
 import glob
@@ -61,7 +63,7 @@ def main():
         right_FAST_points = np.array([kp.pt for kp in right_keypoints], dtype=np.float32)
         
         # Visualize right_FAST_points
-        print "Visualize right_FAST_points"
+        print ("Visualize right_FAST_points")
         cv2.imshow("img", cv2.drawKeypoints(
                 right_img,
                 [cv2.KeyPoint(p[0],p[1], 7.) for p in right_FAST_points],
@@ -88,7 +90,7 @@ def main():
             right_OF_points = np.array(right_OF_points)
             
             # Visualize right_OF_points
-            print "Visualize right_OF_points"
+            print ("Visualize right_OF_points")
             cv2.imshow("img", cv2.drawKeypoints(
                     right_img,
                     [cv2.KeyPoint(p[0],p[1], 7.) for p in right_OF_points],
@@ -153,7 +155,7 @@ def main():
             
             # Update chessboard_idxs
             chessboard_idxs = set(matches_by_trainIdx_chessboard)
-            print "Amount of chessboard features tracked in the new image:", len(chessboard_idxs)
+            print ("Amount of chessboard features tracked in the new image:", len(chessboard_idxs))
         
         
         # Calculate average filtered OF vector
@@ -161,7 +163,7 @@ def main():
         queryIdxs = [matches_by_trainIdx[trainIdx].queryIdx for trainIdx in trainIdxs]
         mean_OF_vector = (right_FAST_points[trainIdxs] - left_points[queryIdxs]).mean(axis=0)
         mean_OF_vector_length = np.linalg.norm(mean_OF_vector)
-        print "mean_OF_vector (from LEFT to RIGHT):", mean_OF_vector, ";    mean_OF_vector_length:", mean_OF_vector_length
+        print ("mean_OF_vector (from LEFT to RIGHT):", mean_OF_vector, ";    mean_OF_vector_length:", mean_OF_vector_length)
         
         # Partition matches to make a distinction between previously triangulated points and non-triangl.
         matches_left_triangl_to_right_FAST = []
@@ -176,7 +178,7 @@ def main():
         matches_left_to_right_FAST = matches_left_triangl_to_right_FAST + matches_left_non_triangl_to_right_FAST
         
         # Visualize (previously triangulated) left_points of corresponding outlier-filtered right_FAST_points
-        print "Visualize LEFT  points (previously triangulated)"
+        print ("Visualize LEFT  points (previously triangulated)")
         cv2.imshow("img", cv2.drawKeypoints(
                 left_img,
                 [cv2.KeyPoint(left_points[m.queryIdx][0],left_points[m.queryIdx][1], 7.) for m in matches_left_triangl_to_right_FAST],
@@ -184,7 +186,7 @@ def main():
         cv2.waitKey()
         
         # Visualize (previously triangulated) outlier-filtered right_FAST_points
-        print "Visualize RIGHT points (previously triangulated)"
+        print ("Visualize RIGHT points (previously triangulated)")
         cv2.imshow("img", cv2.drawKeypoints(
                 right_img,
                 [cv2.KeyPoint(right_FAST_points[m.trainIdx][0],right_FAST_points[m.trainIdx][1], 7.) for m in matches_left_triangl_to_right_FAST],
@@ -192,7 +194,7 @@ def main():
         cv2.waitKey()
         
         # Visualize (not yet triangulated) outlier-filtered right_FAST_points
-        print "Visualize LEFT  points (not yet triangulated)"
+        print ("Visualize LEFT  points (not yet triangulated)")
         cv2.imshow("img", cv2.drawKeypoints(
                 left_img,
                 [cv2.KeyPoint(left_points[m.queryIdx][0],left_points[m.queryIdx][1], 7.) for m in matches_left_non_triangl_to_right_FAST],
@@ -200,7 +202,7 @@ def main():
         cv2.waitKey()
         
         # Visualize (not yet triangulated) outlier-filtered right_FAST_points
-        print "Visualize RIGHT points (not yet triangulated)"
+        print ("Visualize RIGHT points (not yet triangulated)")
         cv2.imshow("img", cv2.drawKeypoints(
                 right_img,
                 [cv2.KeyPoint(right_FAST_points[m.trainIdx][0],right_FAST_points[m.trainIdx][1], 7.) for m in matches_left_non_triangl_to_right_FAST],
@@ -220,7 +222,7 @@ def main():
     
     ###----------------------------- Frame 0 (init) -----------------------------###
     
-    print "###---------------------- Frame 0 (init) ----------------------###"
+    print ("###---------------------- Frame 0 (init) ----------------------###")
     
     left_img = cv2.imread(images[0])
     left_gray = cv2.cvtColor(left_img, cv2.COLOR_BGR2GRAY)
@@ -243,7 +245,7 @@ def main():
     for i in range(2, 14):
         ###----------------------------- Frame i -----------------------------###
         
-        print "###---------------------- Frame %s ----------------------###" % i
+        print ("###---------------------- Frame %s ----------------------###" % i)
 
         # Update data for new frame
         left_img = right_img

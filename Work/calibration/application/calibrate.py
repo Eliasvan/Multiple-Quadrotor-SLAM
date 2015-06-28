@@ -6,6 +6,8 @@
     
     View demo video at http://www.youtube.com/watch?v=SX2qodUfDaA
 """
+from __future__ import print_function    # Python 3 compatibility
+
 import os
 from math import degrees, pi
 import numpy as np
@@ -92,7 +94,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     ret_left, planar_left = cvh.extractChessboardFeatures(img_left, boardSize)
     ret_right, planar_right = cvh.extractChessboardFeatures(img_right, boardSize)
     if not ret_left or not ret_right:
-        print "Chessboard is not (entirely) in sight, aborting."
+        print ("Chessboard is not (entirely) in sight, aborting.")
         return
     
     # Save exact 2D and 3D points of the chessboard
@@ -157,17 +159,17 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         circle2[:, 2] += 2
         
         # Print output to be used in Blender (see "calibrate_pose_visualization.blend")
-        print
-        print "Cubes"
-        print "edges_cube = \\\n", map(list, cube_edges)
-        print "coords_cube1 = \\\n", map(list, cube1)
-        print "coords_cube2 = \\\n", map(list, cube2)
-        print
-        print "Circles"
-        print "edges_circle = \\\n", map(list, circle_edges)
-        print "coords_circle1 = \\\n", map(list, circle1)
-        print "coords_circle2 = \\\n", map(list, circle2)
-        print
+        print ()
+        print ("Cubes")
+        print ("edges_cube = \\\n", map(list, cube_edges))
+        print ("coords_cube1 = \\\n", map(list, cube1))
+        print ("coords_cube2 = \\\n", map(list, cube2))
+        print ()
+        print ("Circles")
+        print ("edges_circle = \\\n", map(list, circle_edges))
+        print ("coords_circle1 = \\\n", map(list, circle1))
+        print ("coords_circle2 = \\\n", map(list, circle2))
+        print ()
         
         color = rgb(0, 200, 150)
         for verts, edges in zip([cube1, cube2, circle1, circle2],
@@ -208,7 +210,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
                     self.img_idx = 1 - self.img_idx
         
         def run(self):
-            print "Select your matches. Press SPACE when done."
+            print ("Select your matches. Press SPACE when done.")
             while True:
                 img = cv2.drawKeypoints(self.images[self.img_idx], [cv2.KeyPoint(p[0],p[1], 7.) for p in self.points[self.img_idx]], color=rgb(0,0,255))
                 cv2.imshow(self.window_name, img)
@@ -218,7 +220,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
             num_points_diff = len(self.points[0]) - len(self.points[1])
             if num_points_diff:
                 del self.points[num_points_diff < 0][-abs(num_points_diff):]
-            print "Selected", len(self.points[0]), "pairs of matches."
+            print ("Selected", len(self.points[0]), "pairs of matches.")
     
     # Execute the manual matching
     nonplanar_left, nonplanar_right = list(nonplanar_left), list(nonplanar_right)
@@ -226,7 +228,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     num_nonplanar = len(nonplanar_left)
     has_nonplanar = (num_nonplanar > 0)
     if 0 < num_nonplanar < 8:
-        print "Warning: you've selected less than 8 pairs of matches."
+        print ("Warning: you've selected less than 8 pairs of matches.")
     nonplanar_left = np.array(nonplanar_left).reshape(num_nonplanar, 2)
     nonplanar_right = np.array(nonplanar_right).reshape(num_nonplanar, 2)
     
@@ -237,7 +239,7 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         planar_left = np.zeros((0, 2))
         planar_right = np.zeros((0, 2))
         objp = np.zeros((0, 3))
-        print "Chessboard corners muted."
+        print ("Chessboard corners muted.")
     
     has_prev_triangl_points = not mute_chessboard_corners    # normally in this example, this should always be True, unless user forces False
     
@@ -266,12 +268,12 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         #   maybe because "_mask.create()" is not called:
         #   https://github.com/Itseez/opencv/blob/7e2bb63378dafb90063af40caff20c363c8c9eaf/modules/calib3d/src/ptsetreg.cpp#L185
         # Workaround to test on outliers: use "!= 1", instead of "== 0"
-        print status.T
+        print (status.T)
         inlier_idxs = np.where(status == 1)[0]
-        print "Removed", allfeatures_nrm_left.shape[0] - inlier_idxs.shape[0], "outlier(s)."
+        print ("Removed", allfeatures_nrm_left.shape[0] - inlier_idxs.shape[0], "outlier(s).")
         num_planar = np.where(inlier_idxs < num_planar)[0].shape[0]
         num_nonplanar = inlier_idxs.shape[0] - num_planar
-        print "num chessboard inliers:", num_planar
+        print ("num chessboard inliers:", num_planar)
         allfeatures_left, allfeatures_right = allfeatures_left[inlier_idxs], allfeatures_right[inlier_idxs]
         allfeatures_nrm_left, allfeatures_nrm_right = allfeatures_nrm_left[inlier_idxs], allfeatures_nrm_right[inlier_idxs]
         if not mute_chessboard_corners:
@@ -283,28 +285,28 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         # Calculate first solution of relative pose
         if allfeatures_nrm_left.shape[0] >= 8:
             F, status = cv2.findFundamentalMat(allfeatures_nrm_left, allfeatures_nrm_right, cv2.FM_8POINT)
-            print "F:"
-            print F
+            print ("F:")
+            print (F)
         else:
-            print "Error: less than 8 pairs of inliers found, I can't perform the 8-point algorithm."
+            print ("Error: less than 8 pairs of inliers found, I can't perform the 8-point algorithm.")
         #E = (K_right.T) .dot (F) .dot (K_left)    # "Multiple View Geometry in CV" by Hartley&Zisserman (9.12)
         E = F    # K = I because we already normalized the coordinates
-        print "Correct determinant of essential matrix?", (abs(cv2.determinant(E)) <= 1e-7)
+        print ("Correct determinant of essential matrix?", (abs(cv2.determinant(E)) <= 1e-7))
         w, u, vt = cv2.SVDecomp(E, flags=cv2.SVD_MODIFY_A)
-        print w
+        print (w)
         if ((w[0] < w[1] and w[0]/w[1]) or (w[1] < w[0] and w[1]/w[0]) or 0) < 0.7:
-            print "Essential matrix' 'w' vector deviates too much from expected"
+            print ("Essential matrix' 'w' vector deviates too much from expected")
         W = np.array([[0., -1., 0.],    # Hartley&Zisserman (9.13)
                       [1.,  0., 0.],
                       [0.,  0., 1.]])
         R = (u) .dot (W) .dot (vt)    # Hartley&Zisserman result 9.19
         det_R = cv2.determinant(R)
-        print "Coherent rotation?", (abs(det_R) - 1 <= 1e-7)
+        print ("Coherent rotation?", (abs(det_R) - 1 <= 1e-7))
         if det_R - (-1) < 1e-7:    # http://en.wikipedia.org/wiki/Essential_matrix#Showing_that_it_is_valid
             # E *= -1:
             vt *= -1    # svd(-E) = u * w * (-v).T
             R *= -1     # => u * W * (-v).T = -R
-            print "det(R) == -1, compensated."
+            print ("det(R) == -1, compensated.")
         t = u[:, 2:3]    # Hartley&Zisserman result 9.19
         P = trfm.P_from_R_and_t(R, t)
         
@@ -314,13 +316,13 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         test_point = np.ones((4, 1))    # 3D point to test the solutions with
         
         if has_prev_triangl_points:
-            print "Using advantage of already triangulated points' position"
-            print P
+            print ("Using advantage of already triangulated points' position")
+            print (P)
             
             # Select the closest already triangulated cloudpoint idx to the center of the cloud
             center_of_mass = objp.sum(axis=0) / objp.shape[0]
             center_objp_idx = np.argmin(((objp - center_of_mass)**2).sum(axis=1))
-            print "center_objp_idx:", center_objp_idx
+            print ("center_objp_idx:", center_objp_idx)
             
             # Select the corresponding image points
             center_imgp_left = planar_nrm_left[center_objp_idx]
@@ -328,81 +330,81 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
             
             # Select the corresponding 3D point
             test_point[0:3, :] = objp[center_objp_idx].reshape(3, 1)
-            print "test_point:"
-            print test_point
+            print ("test_point:")
+            print (test_point)
             test_point = P_left.dot(test_point)    # set the reference axis-system to the one of the left camera, note that are_points_in_front_of_left_camera is automatically True
             
             center_objp_triangl, triangl_status = iterative_LS_triangulation(
                     center_imgp_left.reshape(1, 2), np.eye(4),
                     center_imgp_right.reshape(1, 2), P )
-            print "triangl_status:", triangl_status
+            print ("triangl_status:", triangl_status)
             
             if (center_objp_triangl) .dot (test_point[0:3, 0:1]) < 0:
                 P[0:3, 3:4] *= -1    # do a baseline reversal
-                print P, "fixed triangulation inversion"
+                print (P, "fixed triangulation inversion")
             
             if P[0:3, :].dot(test_point)[2, 0] < 0:    # are_points_in_front_of_right_camera is False
                 P[0:3, 0:3] = (u) .dot (W.T) .dot (vt)    # use the other solution of the twisted pair ...
                 P[0:3, 3:4] *= -1    # ... and also do a baseline reversal
-                print P, "fixed camera projection inversion"
+                print (P, "fixed camera projection inversion")
         
         elif num_nonplanar > 0:
-            print "Doing all ambiguity checks since there are no already triangulated points"
-            print P
+            print ("Doing all ambiguity checks since there are no already triangulated points")
+            print (P)
             
             for i in range(4):    # check all 4 solutions
                 objp_triangl, triangl_status = iterative_LS_triangulation(
                         nonplanar_nrm_left, np.eye(4),
                         nonplanar_nrm_right, P )
-                print "triangl_status:", triangl_status
+                print ("triangl_status:", triangl_status)
                 center_of_mass = objp_triangl.sum(axis=0) / len(objp_triangl)    # select the center of the triangulated cloudpoints
                 test_point[0:3, :] = center_of_mass.reshape(3, 1)
-                print "test_point:"
-                print trfm.P_inv(P_left) .dot (test_point)
+                print ("test_point:")
+                print (trfm.P_inv(P_left) .dot (test_point))
                 
                 if np.eye(3, 4).dot(test_point)[2, 0] > 0 and P[0:3, :].dot(test_point)[2, 0] > 0:    # are_points_in_front_of_cameras is True
                     break
                 
                 if i % 2:
                     P[0:3, 0:3] = (u) .dot (W.T) .dot (vt)   # use the other solution of the twisted pair
-                    print P, "using the other solution of the twisted pair"
+                    print (P, "using the other solution of the twisted pair")
                 
                 else:
                     P[0:3, 3:4] *= -1    # do a baseline reversal
-                    print P, "doing a baseline reversal"
+                    print (P, "doing a baseline reversal")
         
         
         are_points_in_front_of_left_camera = (np.eye(3, 4).dot(test_point)[2, 0] > 0)
         are_points_in_front_of_right_camera = (P[0:3, :].dot(test_point)[2, 0] > 0)
-        print "are_points_in_front_of_cameras?", are_points_in_front_of_left_camera, are_points_in_front_of_right_camera
+        print ("are_points_in_front_of_cameras?", are_points_in_front_of_left_camera, are_points_in_front_of_right_camera)
         if not (are_points_in_front_of_left_camera and are_points_in_front_of_right_camera):
-            print "No valid solution found!"
+            print ("No valid solution found!")
         
         P_left_result = trfm.P_inv(P).dot(P_right)
         P_right_result = P.dot(P_left)
         
-        print "P_left"
-        print P_left
-        print "P_rel"
-        print P
-        print "P_right"
-        print P_right
-        print "=> error:", reprojection_error(
+        print ("P_left")
+        print (P_left)
+        print ("P_rel")
+        print (P)
+        print ("P_right")
+        print (P_right)
+        print ("=> error:", reprojection_error(
                 [objp_orig] * 2, [planar_left_orig, planar_right_orig],
                 cameraMatrix, distCoeffs,
                 [rvec_left, rvec_right],
-                [tvec_left, tvec_right] )[1]
+                [tvec_left, tvec_right] )[1])
         
-        print "P_left_result"
-        print P_left_result
-        print "P_right_result"
-        print P_right_result
+        print ("P_left_result")
+        print (P_left_result)
+        print ("P_right_result")
+        print (P_right_result)
         # We use "P_left" instead of "P_left_result" because the latter depends on the unknown "P_right"
-        print "=> error:", reprojection_error(
+        print ("=> error:", reprojection_error(
                 [objp_orig] * 2, [planar_left_orig, planar_right_orig],
                 cameraMatrix, distCoeffs,
                 [cvh.Rodrigues(P_left[0:3, 0:3]), cvh.Rodrigues(P_right_result[0:3, 0:3])],
-                [P_left[0:3, 3], P_right_result[0:3, 3]] )[1]
+                [P_left[0:3, 3], P_right_result[0:3, 3]] )[1])
     
     
     ### Triangulate
@@ -415,33 +417,33 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
         objp_result, triangl_status = iterative_LS_triangulation(
                 allfeatures_nrm_left, P_left,
                 allfeatures_nrm_right, P_right )
-        print "triangl_status:", triangl_status
+        print ("triangl_status:", triangl_status)
     
     elif num_nonplanar > 0:
         # We already did the triangulation during the pose estimation, but we still need to backtransform them from the left camera axis-system
         objp_result = trfm.P_inv(P_left) .dot (np.concatenate((objp_triangl.T, np.ones((1, len(objp_triangl))))))
         objp_result = objp_result[0:3, :].T
-        print objp_triangl
+        print (objp_triangl)
     
-    print "objp:"
-    print objp
-    print "=> error:", reprojection_error(
+    print ("objp:")
+    print (objp)
+    print ("=> error:", reprojection_error(
             [objp_orig] * 2,
             [planar_left_orig, planar_right_orig],
-            cameraMatrix, distCoeffs, [rvec_left, rvec_right], [tvec_left, tvec_right] )[1]
+            cameraMatrix, distCoeffs, [rvec_left, rvec_right], [tvec_left, tvec_right] )[1])
     
-    print "objp_result of chessboard:"
-    print objp_result[:num_planar, :]
+    print ("objp_result of chessboard:")
+    print (objp_result[:num_planar, :])
     if has_nonplanar:
-        print "objp_result of non-planar geometry:"
-        print objp_result[num_planar:, :]
+        print ("objp_result of non-planar geometry:")
+        print (objp_result[num_planar:, :])
     if num_planar + num_nonplanar == 0:
-        print "=> error: undefined"
+        print ("=> error: undefined")
     else:
-        print "=> error:", reprojection_error(
+        print ("=> error:", reprojection_error(
                 [objp_result] * 2,
                 [allfeatures_left, allfeatures_right],
-                cameraMatrix, distCoeffs, [rvec_left, rvec_right], [tvec_left, tvec_right] )[1]
+                cameraMatrix, distCoeffs, [rvec_left, rvec_right], [tvec_left, tvec_right] )[1])
     
     
     ### Print total combined reprojection error
@@ -449,15 +451,15 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     # We only have both pose estimation and triangulation if we've got 2D points of non-planar geometry
     if has_nonplanar:
         if num_planar + num_nonplanar == 0:
-            print "=> error: undefined"
+            print ("=> error: undefined")
         else:
             # We use "P_left" instead of "P_left_result" because the latter depends on the unknown "P_right"
-            print "Total combined error:", reprojection_error(
+            print ("Total combined error:", reprojection_error(
                     [objp_result] * 2,
                     [allfeatures_left, allfeatures_right],
                     cameraMatrix, distCoeffs,
                     [cvh.Rodrigues(P_left[0:3, 0:3]), cvh.Rodrigues(P_right_result[0:3, 0:3])],
-                    [P_left[0:3, 3], P_right_result[0:3, 3]] )[1]
+                    [P_left[0:3, 3], P_right_result[0:3, 3]] )[1])
     
     
     """
@@ -470,32 +472,32 @@ def triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, 
     
     ### Print summary to be used in Blender to visualize (see "calibrate_pose_visualization.blend")
     
-    print "Camera poses:"
+    print ("Camera poses:")
     if has_nonplanar:
-        print "Left"
+        print ("Left")
         print_pose(rvec_left, tvec_left)
-        print
-        print "Left_result"
+        print ()
+        print ("Left_result")
         print_pose(cvh.Rodrigues(P_left_result[0:3, 0:3]), P_left_result[0:3, 3:4])
-        print
-        print "Right"
+        print ()
+        print ("Right")
         print_pose(rvec_right, tvec_right)
-        print
-        print "Right_result"
+        print ()
+        print ("Right_result")
         print_pose(cvh.Rodrigues(P_right_result[0:3, 0:3]), P_right_result[0:3, 3:4])
-        print
+        print ()
     else:
-        print "<skipped: no non-planar objects have been selected>"
-        print
+        print ("<skipped: no non-planar objects have been selected>")
+        print ()
     
-    print "Points:"
-    print "Chessboard"
-    print "coords = \\\n", map(list, objp_result[:num_planar, :])
-    print 
+    print ("Points:")
+    print ("Chessboard")
+    print ("coords = \\\n", map(list, objp_result[:num_planar, :]))
+    print ()
     if has_nonplanar:
-        print "Non-planar geometry"
-        print "coords_nonplanar = \\\n", map(list, objp_result[num_planar:, :])
-        print
+        print ("Non-planar geometry")
+        print ("coords_nonplanar = \\\n", map(list, objp_result[num_planar:, :]))
+        print ()
     
     ### Return to remember last manually matched successful non-planar imagepoints
     return nonplanar_left, nonplanar_right
@@ -589,8 +591,8 @@ def realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, 
             textTotal = '\n'.join(texts)
             open(filename + ".txt", 'w').write(textTotal)    # write data to txt-file
             
-            print "Saved keyframe image+data to", filename, ":"
-            print textTotal
+            print ("Saved keyframe image+data to", filename, ":")
+            print (textTotal)
             
             imageNr += 1
             rvec_prev = rvec
@@ -632,7 +634,7 @@ def calibrate_relative_poses_interactive(image_sets, cameraMatrixs, distCoeffss,
             img = cv2.imread(image)
             ret, corners = cvh.extractChessboardFeatures(img, boardSize)
             if not ret:
-                print "Error: Image '%s' didn't contain a chessboard of size %s." % (image, boardSize)
+                print ("Error: Image '%s' didn't contain a chessboard of size %s." % (image, boardSize))
                 return False, None
             
             # Draw and display the corners
@@ -709,7 +711,7 @@ def main():
           or simply press ENTER to preserve the default value.
     """
     from textwrap import dedent
-    print dedent(help_text)
+    print (dedent(help_text))
     
     inp = ""
     while inp.lower() != "q":
@@ -717,7 +719,7 @@ def main():
         
         if inp == "1":
             get_variable("boardSize", lambda x: eval("(%s)" % x))
-            print    # add new-line
+            print ()    # add new-line
             
             objp = calibration_tools.grid_objp(boardSize)
         
@@ -725,26 +727,26 @@ def main():
             get_variable("filename_base_chessboards")
             from glob import glob
             images = sorted(glob(filename_base_chessboards))
-            print    # add new-line
+            print ()    # add new-line
             
             reproj_error, cameraMatrix, distCoeffs, rvecs, tvecs, objectPoints, imagePoints, imageSize = \
                     calibrate_camera_interactive(images, objp, boardSize)
-            print "cameraMatrix:\n", cameraMatrix
-            print "distCoeffs:\n", distCoeffs
-            print "reproj_error:", reproj_error
+            print ("cameraMatrix:\n", cameraMatrix)
+            print ("distCoeffs:\n", distCoeffs)
+            print ("reproj_error:", reproj_error)
             
             cv2.destroyAllWindows()
         
         elif inp == "3":
             get_variable("filename_intrinsics")
-            print    # add new-line
+            print ()    # add new-line
             
             calibration_tools.save_camera_intrinsics(
                     filename_intrinsics, cameraMatrix, distCoeffs, imageSize )
         
         elif inp == "4":
             get_variable("filename_intrinsics")
-            print    # add new-line
+            print ()    # add new-line
             
             cameraMatrix, distCoeffs, imageSize = \
                     calibration_tools.load_camera_intrinsics(filename_intrinsics)
@@ -752,13 +754,13 @@ def main():
         elif inp == "5":
             get_variable("filename_distorted")
             img = cv2.imread(filename_distorted)
-            print    # add new-line
+            print ()    # add new-line
             
             img_undistorted, roi = calibration_tools.undistort_image(
                     img, cameraMatrix, distCoeffs, imageSize )
             cv2.imshow("Original Image", img)
             cv2.imshow("Undistorted Image", img_undistorted)
-            print "Press any key to continue."
+            print ("Press any key to continue.")
             cv2.waitKey()
             
             cv2.destroyAllWindows()
@@ -766,17 +768,17 @@ def main():
         elif inp == "6":
             mean_error, square_error = reprojection_error(
                     objectPoints, imagePoints, cameraMatrix, distCoeffs, rvecs, tvecs )
-            print "mean absolute error:", mean_error
-            print "square error:", square_error
+            print ("mean absolute error:", mean_error)
+            print ("square error:", square_error)
         
         elif inp == "7":
-            print triangl_pose_est_interactive.__doc__
+            print (triangl_pose_est_interactive.__doc__)
             
             get_variable("filename_triangl_pose_est_left")
             img_left = cv2.imread(filename_triangl_pose_est_left)
             get_variable("filename_triangl_pose_est_right")
             img_right = cv2.imread(filename_triangl_pose_est_right)
-            print    # add new-line
+            print ()    # add new-line
             
             nonplanar_left, nonplanar_right = \
                     triangl_pose_est_interactive(img_left, img_right, cameraMatrix, distCoeffs, imageSize, objp, boardSize, nonplanar_left, nonplanar_right)
@@ -784,18 +786,18 @@ def main():
             cv2.destroyAllWindows()
         
         elif inp == "8":
-            print realtime_pose_estimation.__doc__
+            print (realtime_pose_estimation.__doc__)
             
             get_variable("device_id", int)
             get_variable("filename_base_extrinsics")
-            print    # add new-line
+            print ()    # add new-line
             
             realtime_pose_estimation(device_id, filename_base_extrinsics, cameraMatrix, distCoeffs, objp, boardSize)
             
             cv2.destroyAllWindows()
         
         elif inp == "9":
-            print calibrate_relative_poses_interactive.__doc__
+            print (calibrate_relative_poses_interactive.__doc__)
             
             get_variable("filenames_extra_chessboards", lambda x: eval("(%s)" % x))
             from glob import glob
@@ -807,15 +809,15 @@ def main():
             get_variable("extra_board_scales", lambda x: eval("(%s)" % x))
             get_variable("extra_board_rvecs", lambda x: eval("(%s)" % x))
             get_variable("extra_board_tvecs", lambda x: eval("(%s)" % x))
-            print    # add new-line
+            print ()    # add new-line
             
             ret, Ps, reproj_error_max = \
                     calibrate_relative_poses_interactive(image_sets, cameraMatrixs, distCoeffss, imageSizes,
                                                          extra_boardSizes, extra_board_scales, extra_board_rvecs, extra_board_tvecs)
             if ret:
-                print "Ps:"
-                for P in Ps: print P
-                print "reproj_error_max:", reproj_error_max
+                print ("Ps:")
+                for P in Ps: print (P)
+                print ("reproj_error_max:", reproj_error_max)
 
 if __name__ == "__main__":
     main()

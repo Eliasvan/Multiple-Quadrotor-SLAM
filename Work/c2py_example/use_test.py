@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from __future__ import print_function    # Python 3 compatibility
+
 try:    # first, try to load the "test_ext" module if it already exists, otherwise build it
     import test_ext
 except ImportError:
@@ -19,39 +21,39 @@ def main():
                     [0, +1],    # so only the first 3x2 matrix should be altered by func1()
                     [-1, 0],
                     [+1, 0]], dtype=np.int32)
-    print "a:", a
-    print "b:", b
-    print "buf:"
-    print buf
-    print
+    print ("a:", a)
+    print ("b:", b)
+    print ("buf:")
+    print (buf)
+    print ()
 
     # Run the functions defined in "test.c"
-    print "Running func2()"
+    print ("Running func2()")
     ret = test_ext.func2()
-    print "=> function returned:", ret
-    print
-    print "Running func1()"
+    print ("=> function returned:", ret)
+    print ()
+    print ("Running func1()")
     ret = test_ext.func1(a, b, buf)
-    print "=> function returned:", ret
-    print
-    print "Running func2()"
+    print ("=> function returned:", ret)
+    print ()
+    print ("Running func2()")
     ret = test_ext.func2()
-    print "=> function returned:", ret
-    print
+    print ("=> function returned:", ret)
+    print ()
 
     # Show modified buf
-    print "buf:"
-    print buf
-    print
+    print ("buf:")
+    print (buf)
+    print ()
 
     # Run again and notice the counter increment at func2()
-    print "Running func1()"
+    print ("Running func1()")
     ret = test_ext.func1(a, b, buf)
-    print "=> function returned:", ret
-    print
-    print "Running func2()"
+    print ("=> function returned:", ret)
+    print ()
+    print ("Running func2()")
     ret = test_ext.func2()
-    print "=> function returned:", ret
+    print ("=> function returned:", ret)
 
 
 if __name__ == "__main__":

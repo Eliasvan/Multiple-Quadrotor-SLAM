@@ -1,3 +1,5 @@
+from __future__ import print_function    # Python 3 compatibility
+
 import os
 from textwrap import dedent
 import numpy as np
@@ -109,19 +111,19 @@ def create_ext_lib(filename, openmp=False):
 
     # Read extension module definition by C file
     module_name, libraries, includes, supportcode, functions = parse_c_file(filename)
-    #print "Libraries:"
-    #print libraries
-    #print
-    #print "Includes:"
-    #print includes
-    #print
-    #print "Support code:"
-    #print supportcode
-    #print
-    #print "Functions:"
+    #print ("Libraries:")
+    #print (libraries)
+    #print ()
+    #print ("Includes:")
+    #print (includes)
+    #print ()
+    #print ("Support code:")
+    #print (supportcode)
+    #print ()
+    #print ("Functions:")
     #for function in functions:
-        #print function
-    #print
+        #print (function)
+    #print ()
 
     # Create a new extension module object
     module = ext_tools.ext_module(module_name)
@@ -191,14 +193,14 @@ def create_ext_lib(filename, openmp=False):
     module.customize.add_module_init_code(init_function_struct)
 
     # (Re-)Compile the extension module
-    print 'Compiling "%s" to extension module "%s"...' % (filename, module_name)
-    print
+    print ('Compiling "%s" to extension module "%s"...' % (filename, module_name))
+    print ()
     for f in os.listdir('.'):
         filename, extension = os.path.splitext(f)
         if filename == module_name and extension in (".cpp", ".so", ".dylib", ".dll") and os.path.isfile(f):
             os.remove(f)    # remove cpp and library, to force recompilation
     module.compile()
-    print "Done."
-    print
+    print ("Done.")
+    print ()
     
     return module

@@ -20,7 +20,8 @@ class TakePhoto:
         for i, folder in enumerate((image_folder_front, image_folder_bottom)):
             if not os.path.exists(folder):
                 os.mkdir(folder)
-            print "I will use folder '%s' for outputting %s cam images." % (os.path.abspath(folder), ("front", "bottom")[i])
+            rospy.loginfo("I will use folder '%s' for outputting %s cam images." % 
+                          (os.path.abspath(folder), ("front", "bottom")[i]))
         self.image_folders = (image_folder_front, image_folder_bottom)
         self.takephoto_live = takephoto_live
         self.takephoto_usb = takephoto_usb

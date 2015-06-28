@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from __future__ import print_function    # Python 3 compatibility
+
 import os
 from math import tan, asin, pi
 import numpy as np
@@ -432,7 +434,7 @@ def test_1and2(trajectories, filename="test_1and2.mat"):
     is_inside_view = True
     
     for ptci, trajectory in enumerate(trajectories):
-        print "Performing trajectory id", ptci, "..."
+        print ("Performing trajectory id", ptci, "...")
         
         for pci, (sideways, towards, angle) in enumerate(zip(
                 trajectory["sideways_values"], trajectory["towards_values"], trajectory["angle_values"] )):
@@ -451,9 +453,9 @@ def test_1and2(trajectories, filename="test_1and2.mat"):
                 cam2.apply_noise(params["cam_noise_sigma"], params["cam_noise_discretized"])
                 
                 #np.set_printoptions(threshold=5)
-                #print cam2.points_2D
-                #print np.min(cam2.points_2D[:, 0]), np.max(cam2.points_2D[:, 0]), np.min(cam2.points_2D[:, 1]), np.max(cam2.points_2D[:, 1])
-                #print all(0 <= cam2.points_2D[:, 0]) and all(cam2.points_2D[:, 0] < params["cam_resolution"][0]) and all(0 <= cam2.points_2D[:, 1]) and all(cam2.points_2D[:, 1] < params["cam_resolution"][1])
+                #print (cam2.points_2D)
+                #print (np.min(cam2.points_2D[:, 0]), np.max(cam2.points_2D[:, 0]), np.min(cam2.points_2D[:, 1]), np.max(cam2.points_2D[:, 1]))
+                #print (all(0 <= cam2.points_2D[:, 0]) and all(cam2.points_2D[:, 0] < params["cam_resolution"][0]) and all(0 <= cam2.points_2D[:, 1]) and all(cam2.points_2D[:, 1] < params["cam_resolution"][1]))
                 is_inside_view *= (
                         all(0 <= cam2.points_2D[:, 0]) and all(cam2.points_2D[:, 0] < params["cam_resolution"][0]) and 
                         all(0 <= cam2.points_2D[:, 1]) and all(cam2.points_2D[:, 1] < params["cam_resolution"][1]) )
@@ -485,7 +487,7 @@ def test_1and2(trajectories, filename="test_1and2.mat"):
                             vector_stat(errors_partitioned)
     
     if not is_inside_view:
-        print "Warning: some points fell out of view."
+        print ("Warning: some points fell out of view.")
     
     variables = {
             "err3D_mean_summary"    : err3D_mean_summary,
@@ -548,7 +550,7 @@ def test_3(trajectories, max_noise_sigma=4., num_noise_tests=40, filename="test_
                 trajectory["sideways_values"][-1], trajectory["towards_values"][-1], trajectory["angle_values"][-1] )
         
         for ntyi in range(num_noise_types):
-            print "Performing noise type id", ntyi, "..."
+            print ("Performing noise type id", ntyi, "...")
             
             if ntyi == 0:      # Additive gaussian noise
                 noise_discretized = False
@@ -600,7 +602,7 @@ def test_3(trajectories, max_noise_sigma=4., num_noise_tests=40, filename="test_
                             robustness_stat(errors, statuses[ti])
     
     if not is_inside_view:
-        print "Warning: some points fell out of view."
+        print ("Warning: some points fell out of view.")
     
     variables = {
             "err3D_mean_summary"    : err3D_mean_summary,
@@ -636,16 +638,16 @@ def stop_timer():
     global t
     t += time() - ts
 def print_timer():
-    print t
+    print (t)
 
 def main():
     rstate = random.get_state()
     reset_random()
     
-    print "Running tests 1 and 2 ..."
+    print ("Running tests 1 and 2 ...")
     test_1and2(trajectories)
     
-    print "Running test 3 ..."
+    print ("Running test 3 ...")
     test_3(trajectories)
     
     print_timer()
